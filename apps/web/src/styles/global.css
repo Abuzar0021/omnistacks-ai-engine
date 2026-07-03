@@ -1,0 +1,133 @@
+:root {
+  --bg: #0f1117;
+  --bg-panel: #161a23;
+  --bg-card: #1c2130;
+  --border: #2a3040;
+  --text: #e6e9f0;
+  --text-muted: #8b93a7;
+  --accent: #5b8cff;
+  --ok: #3ecf8e;
+  --warn: #f5a623;
+  --err: #f56565;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+code {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  padding: 1.5rem 1rem;
+}
+
+.logo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  letter-spacing: -0.01em;
+}
+
+.logo-accent {
+  color: var(--accent);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nav-item {
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.nav-item-active {
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.content {
+  flex: 1;
+  padding: 2rem 2.5rem;
+}
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.status-pill {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.status-online {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status-offline {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.status-checking {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-width: 640px;
+}
+
+.card h3 {
+  margin-bottom: 0.5rem;
+}
+
+.card p {
+  color: var(--text-muted);
+  line-height: 1.6;
+}

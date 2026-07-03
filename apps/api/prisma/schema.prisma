@@ -1,0 +1,151 @@
+// OmniStacks AI Engine — Prisma schema
+// Foundational data model for the lead generation platform.
+// Run `npm run prisma:migrate` (from the repo root) to create migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & access
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  status      CampaignStatus @default(DRAFT)
+  ownerId     String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  owner User        @relation(fields: [ownerId], references: [id])
+  leads Lead[]
+  jobs  ScrapeJob[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// ---------------------------------------------------------------------------
+// Leads
+// ---------------------------------------------------------------------------
+
+model Lead {
+  id          String     @id @default(cuid())
+  email       String?
+  fullName    String?
+  company     String?
+  title       String?
+  website     String?
+  linkedinUrl String?
+  phone       String?
+  source      LeadSource @default(SCRAPED)
+  status      LeadStatus @default(NEW)
+  score       Int?
+  /// Raw enrichment payload (LLM output, scraped attributes, etc.)
+  enrichment  Json?
+  campaignId  String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([status])
+  @@index([email])
+  @@map("leads")
+}
+
+enum LeadSource {
+  SCRAPED
+  IMPORTED
+  API
+  MANUAL
+}
+
+enum LeadStatus {
+  NEW
+  ENRICHED
+  QUALIFIED
+  CONTACTED
+  CONVERTED
+  DISQUALIFIED
+}
+
+// ---------------------------------------------------------------------------
+// Background jobs (consumed by apps/worker)
+// ---------------------------------------------------------------------------
+
+model ScrapeJob {
+  id         String    @id @default(cuid())
+  type       JobType
+  status     JobStatus @default(PENDING)
+  /// Job input (target URLs, search criteria, model parameters, ...)
+  payload    Json?
+  /// Job output persisted by the worker
+  result     Json?
+  error      String?
+  attempts   Int       @default(0)
+  campaignId String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([status, type])
+  @@index([campaignId])
+  @@map("scrape_jobs")
+}
+
+enum JobType {
+  SCRAPE
+  ENRICH
+  SCORE
+  SYNC
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
