@@ -8,6 +8,21 @@ n8n workflows.
 > in place — business logic (scrapers, enrichment, scoring, outreach) is intentionally not
 > implemented yet.
 
+## Documentation
+
+The [`docs/`](docs) directory is the project's single source of truth:
+
+| Document                                        | Contents                                                                            |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)         | System architecture, service responsibilities, data flow, design decisions, scaling |
+| [ROADMAP.md](docs/ROADMAP.md)                   | Milestones with independently testable completion criteria                          |
+| [DATABASE.md](docs/DATABASE.md)                 | Tables, relationships, indexes, naming conventions, migrations                      |
+| [API.md](docs/API.md)                           | REST conventions, errors, validation, auth, versioning                              |
+| [CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | TypeScript conventions, naming, logging, errors, testing                            |
+| [PROMPTS.md](docs/PROMPTS.md)                   | All AI prompts, their purpose, and JSON response schemas                            |
+| [N8N.md](docs/N8N.md)                           | Planned workflows, triggers, queues, retry logic                                    |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md)             | Local dev, Docker, production, env vars, backups                                    |
+
 ## Stack
 
 | Layer           | Technology                                  |
