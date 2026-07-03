@@ -96,6 +96,72 @@ Free-form labels attachable to any business (`hot`, `q3-batch`, ...).
 Relations: many-to-many with `businesses`. Tags are created on demand
 (`connectOrCreate`) when referenced by name through the API.
 
+### `website_analyses`
+
+One run of the website analyzer (M2) against a business's website — data collection
+only, no AI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the module's scope boundary.
+
+| Column               | Type                    | Notes                                                               |
+| -------------------- | ----------------------- | ------------------------------------------------------------------- |
+| `id`                 | `String`                | PK, cuid                                                            |
+| `businessId`         | `String`                | FK → `businesses.id`, **onDelete: Cascade**                         |
+| `status`             | `WebsiteAnalysisStatus` | `PENDING` (default) → `RUNNING` → `COMPLETED` \| `FAILED`           |
+| `requestedUrl`       | `String`                | `business.website` at the time the analysis was started             |
+| `finalUrl`           | `String?`               | URL after following redirects                                       |
+| `statusCode`         | `Int?`                  | HTTP status of the final response                                   |
+| `redirectCount`      | `Int?`                  |                                                                     |
+| `title`              | `String?`               |                                                                     |
+| `metaDescription`    | `String?`               |                                                                     |
+| `canonicalUrl`       | `String?`               |                                                                     |
+| `language`           | `String?`               | `<html lang>`                                                       |
+| `faviconUrl`         | `String?`               |                                                                     |
+| `headings`           | `Json?`                 | `{ h1: string[], ..., h6: string[] }`                               |
+| `openGraph`          | `Json?`                 | Open Graph meta tags, key → content                                 |
+| `twitterCard`        | `Json?`                 | Twitter Card meta tags, key → content                               |
+| `jsonLd`             | `Json?`                 | Parsed `application/ld+json` blocks                                 |
+| `internalLinks`      | `Json?`                 | `{ href, text }[]`, same hostname as `finalUrl`                     |
+| `externalLinks`      | `Json?`                 | `{ href, text }[]`, different hostname                              |
+| `navigationLinks`    | `Json?`                 | `{ href, text }[]` found inside `<nav>`                             |
+| `footerLinks`        | `Json?`                 | `{ href, text }[]` found inside `<footer>`                          |
+| `images`             | `Json?`                 | `{ src, alt }[]`                                                    |
+| `videos`             | `Json?`                 | `{ src, type }[]` (`type`: `video` \| `embed`)                      |
+| `contactForms`       | `Json?`                 | `{ action, method, fieldCount, fieldNames }[]`                      |
+| `emails`             | `Json?`                 | Deduplicated strings found in page text                             |
+| `phones`             | `Json?`                 | Deduplicated strings found in page text (heuristic)                 |
+| `socialLinks`        | `Json?`                 | `{ platform, url }[]`                                               |
+| `technologies`       | `Json?`                 | Detected technology names, e.g. `["WORDPRESS", "GOOGLE_ANALYTICS"]` |
+| `screenshotPath`     | `String?`               | Path relative to `SCREENSHOT_STORAGE_DIR`, not a public URL         |
+| `screenshotWidth`    | `Int?`                  |                                                                     |
+| `screenshotHeight`   | `Int?`                  |                                                                     |
+| `screenshotByteSize` | `Int?`                  |                                                                     |
+| `screenshotMimeType` | `String?`               | Always `image/png`                                                  |
+| `durationMs`         | `Int?`                  | Wall-clock time from `RUNNING` to terminal status                   |
+| `error`              | `String?`               | Populated on `FAILED`                                               |
+| `startedAt`          | `DateTime?`             |                                                                     |
+| `finishedAt`         | `DateTime?`             |                                                                     |
+| `createdAt`          | `DateTime`              |                                                                     |
+| `updatedAt`          | `DateTime`              |                                                                     |
+
+Indexes: `(businessId)`, `(status)`, `(createdAt)` — back the per-business history list
+(default sort) and future dashboards filtering by status.
+
+Cascade rationale: an analysis has no meaning outside the business it was run against
+(same rationale as `leads` → `campaigns`).
+
+**Why so many `Json` columns:** the naming-convention rule is "anything queried/filtered
+regularly gets promoted to a real column" — this milestone has no filter/search
+requirement over analysis contents (unlike `businesses`), so the inherently list/object-shaped
+captured data (links, images, headings, tag maps) stays JSON. The genuinely scalar,
+single-value facts (`title`, `canonicalUrl`, `language`, `statusCode`, ...) are still real
+columns, consistent with how `businesses` and `leads` are modeled.
+
+**Why a dedicated `WebsiteAnalysisStatus` enum instead of reusing `JobStatus`:** the two
+enums currently have the same PENDING/RUNNING/COMPLETED/FAILED shape (`JobStatus` also has
+`CANCELLED`, which doesn't apply here), but they belong to different, independently
+evolving concerns — `scrape_jobs` is the M4 durable job queue's audit trail, while
+`website_analyses` is this module's own state machine with its own future fields
+(retry policy, cancellation) that shouldn't have to stay compatible with the job queue's.
+
 ### `campaigns`
 
 A lead generation campaign owned by a user.
@@ -169,6 +235,7 @@ SetNull rationale: jobs are an audit/operations record; they outlive campaign de
 ```mermaid
 erDiagram
     businesses }o--o{ tags : labelled
+    businesses ||--o{ website_analyses : "analyzed by"
     users ||--o{ campaigns : owns
     campaigns ||--o{ leads : contains
     campaigns |o--o{ scrape_jobs : "tracked by"
@@ -188,7 +255,8 @@ erDiagram
 ## Migration strategy
 
 - **Tooling:** Prisma Migrate. Migrations live in `apps/api/prisma/migrations/` — the
-  first one (`20260703091443_init_lead_management`) creates the full schema above.
+  first one (`20260703091443_init_lead_management`) creates the full schema above;
+  `20260703174233_add_website_analysis` adds the `website_analyses` table.
 - **Create (dev):** `./scripts/db-migrate.sh <name>` (wraps `prisma migrate dev`) against
   the local Compose Postgres. Commit the generated SQL with the schema change.
 - **Tests:** the Vitest global setup applies migrations to the test database

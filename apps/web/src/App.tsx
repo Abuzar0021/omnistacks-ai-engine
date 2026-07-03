@@ -3,6 +3,7 @@ import { BusinessDetailPage } from './pages/BusinessDetailPage';
 import { BusinessListPage } from './pages/BusinessListPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ImportPage } from './pages/ImportPage';
+import { WebsiteAnalysisDetailPage } from './pages/WebsiteAnalysisDetailPage';
 
 function navClass({ isActive }: { isActive: boolean }) {
   return isActive ? 'nav-item nav-item-active' : 'nav-item';
@@ -33,6 +34,10 @@ export function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/businesses" element={<BusinessListPage />} />
           <Route path="/businesses/:id" element={<BusinessDetailPage />} />
+          <Route
+            path="/businesses/:businessId/website-analyses/:analysisId"
+            element={<WebsiteAnalysisDetailPage />}
+          />
           <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<p className="text-muted">Page not found.</p>} />
         </Routes>

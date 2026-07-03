@@ -15,6 +15,17 @@ const envSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
   OPENROUTER_MODEL: z.string().default('anthropic/claude-sonnet-4.5'),
+
+  // Website analyzer (Playwright-driven data collection)
+  PLAYWRIGHT_HEADLESS: z
+    .string()
+    .default('true')
+    .transform((value) => value !== 'false'),
+  PLAYWRIGHT_BROWSERS_PATH: z.string().optional(),
+  ANALYSIS_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  ANALYSIS_NAVIGATION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  ANALYSIS_STABLE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  SCREENSHOT_STORAGE_DIR: z.string().default('./storage/screenshots'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteBusiness, getBusiness, updateBusiness } from '../api/businesses';
 import { ApiError } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
+import { WebsiteAnalysisPanel } from '../components/WebsiteAnalysisPanel';
 import { BUSINESS_STATUSES, type Business, type BusinessStatus } from '../types/business';
 
 interface FormState {
@@ -249,6 +250,8 @@ export function BusinessDetailPage() {
           </button>
         </div>
       </form>
+
+      <WebsiteAnalysisPanel businessId={business.id} hasWebsite={Boolean(business.website)} />
     </div>
   );
 }

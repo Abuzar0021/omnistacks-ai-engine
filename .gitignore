@@ -19,6 +19,9 @@ npm-debug.log*
 # Prisma
 apps/api/prisma/*.db
 
+# Website analyzer screenshot storage (local disk, not versioned)
+apps/api/storage/
+
 # Playwright
 playwright-report/
 test-results/

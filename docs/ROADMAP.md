@@ -57,7 +57,51 @@ curl — no auth, scraping, or AI required.
 
 ---
 
-## M2 — Authentication & user management ⬜
+## M2 — Website Analyzer ✅
+
+**Scope:** a self-contained data-collection module — deliberately **no AI, scoring,
+email, or n8n**. Given a business, launches Playwright, visits its website (following
+redirects, tolerating invalid TLS certs, bounded by navigation/stability timeouts),
+and captures a full-page screenshot plus structured page data: title, meta description,
+canonical URL, language, favicon, H1–H6 headings, Open Graph/Twitter Card tags, JSON-LD,
+internal/external/navigation/footer links, images, videos, contact forms, emails, phone
+numbers, social links, and best-effort technology detection (WordPress, Shopify, Wix,
+Squarespace, React, Next.js, Angular, Vue, Google Analytics, Google Tag Manager,
+Cloudflare, Facebook Pixel). Runs asynchronously in-process (`PENDING → RUNNING →
+COMPLETED`/`FAILED`) behind a small concurrency gate — not the durable job queue
+scoped for M4.
+
+**Completion criteria (met):**
+
+- [x] `WebsiteAnalysis` Prisma model (own table, not `scrape_jobs`) with a `businessId`
+      FK, cascade delete, and indexes on `(businessId)`, `(status)`, `(createdAt)`
+- [x] `POST /api/businesses/:businessId/website-analyses` starts an analysis (`202`,
+      `404` unknown business, `422` no website configured)
+- [x] `GET /api/website-analyses/:id` reports status and (once completed) full results;
+      `GET .../screenshot` returns metadata + a servable file URL;
+      `GET /api/businesses/:businessId/website-analyses` lists history, paginated
+- [x] Redirects, invalid TLS certificates, and navigation timeouts are all handled
+      without crashing the analysis (recorded as either a successful result or a
+      `FAILED` status with a clear `error` message)
+- [x] Successful completion promotes the business `NEW → ANALYZED` (idempotent — no-op
+      if already past `NEW`)
+- [x] Structured logs for start/complete/redirects/timeouts/errors, each with duration
+- [x] Web: "Analyze website" button + live status + history table on the business detail
+      page, and a details page rendering every captured category plus the screenshot
+- [x] Unit tests for every pure extraction/classification function (links, contact info,
+      social links, technology detection, PNG dimensions) and the service's orchestration
+      logic (mocked repository/business-repo/capture); integration tests drive a real
+      headless Chromium against local HTTP **and self-signed HTTPS** fixture servers,
+      covering the full pipeline, redirects, TLS tolerance, timeouts, and unreachable
+      hosts — no external network required
+
+**Independent test:** create a business with a website, `POST` an analysis, poll until
+`COMPLETED`, and browse the result via the API or the business detail/analysis-details
+pages — no auth, job queue, or AI required.
+
+---
+
+## M3 — Authentication & user management ⬜
 
 **Scope:** JWT-based auth on the API (see [API.md](API.md)), register/login/refresh
 endpoints, password hashing, `ADMIN`/`MEMBER` role enforcement middleware, auth screens in
@@ -77,11 +121,13 @@ the token.
 
 ---
 
-## M3 — Job queue & worker execution loop ⬜
+## M4 — Job queue & worker execution loop ⬜
 
 **Scope:** the worker consumes `scrape_jobs`: atomic claiming (`SKIP LOCKED`),
 `WORKER_CONCURRENCY` parallel handlers, attempts/backoff/timeouts, job status endpoints,
-dead-letter handling (`FAILED` after max attempts).
+dead-letter handling (`FAILED` after max attempts). This is the durable, multi-instance
+queue infrastructure — a different concern from the website analyzer's small in-process
+concurrency gate (M2), which stays as-is; nothing here requires changing it.
 
 **Completion criteria:**
 
@@ -97,30 +143,11 @@ verify retry.
 
 ---
 
-## M4 — Website analysis (Playwright) ⬜
-
-**Scope:** `SCRAPE`/analysis job handlers that visit a business's website with
-Playwright, capture structured facts (tech stack, contact info, page content extracts,
-performance basics), persist them, and move the business `NEW → ANALYZED`. Politeness
-controls (delays, concurrency caps, robots awareness).
-
-**Completion criteria:**
-
-- [ ] An analysis job against a fixture site (served locally in tests) produces the
-      expected structured result and status transition
-- [ ] Re-running a job is idempotent (no duplicate data)
-- [ ] Failures (timeouts, blocked pages) mark the job `FAILED` with a useful `error`
-- [ ] Scraper respects configured rate limits
-
-**Independent test:** run against a local fixture site in CI — no external network needed.
-
----
-
 ## M5 — AI audits & scoring (OpenRouter) ⬜
 
 **Scope:** LLM job handlers using the prompts in [PROMPTS.md](PROMPTS.md): generate a
-website/business audit from analysis output (`ANALYZED → AUDITED`) and score fit. Zod
-validation of model output, retry on malformed JSON, token/cost logging.
+website/business audit from the M2 analysis output (`ANALYZED → AUDITED`) and score fit.
+Zod validation of model output, retry on malformed JSON, token/cost logging.
 
 **Completion criteria:**
 
@@ -129,8 +156,8 @@ validation of model output, retry on malformed JSON, token/cost logging.
 - [ ] Token usage per job is logged
 - [ ] Tests run against a mocked OpenRouter (no live API calls in CI)
 
-**Independent test:** seed analyzed businesses, run audits against the mock, assert
-stored JSON validates and statuses transition.
+**Independent test:** seed analyzed businesses (M2 output), run audits against the mock,
+assert stored JSON validates and statuses transition.
 
 ---
 
@@ -191,10 +218,13 @@ run the load test script.
 
 ## Sequencing notes
 
-- **M1 (done)** deliberately precedes auth: the lead pipeline is the product's core and
-  every later milestone operates on `Business` rows.
-- M2 (auth) should land before any deployment that faces the internet.
-- M3 unblocks M4 and M5; M4 and M5 can then proceed **in parallel**.
+- **M2 (done)** deliberately precedes auth: the website analyzer is a core building
+  block for M5 (audits) and doesn't need user accounts to be useful or testable.
+- M3 (auth) should land before any deployment that faces the internet.
+- M4 (the durable job queue) is independent of M2/M3 and can start any time; it unblocks
+  moving heavier or higher-volume work (bulk re-analysis, scraping beyond a single
+  business) off the API process and onto `apps/worker` if that ever becomes necessary.
+- M5 depends on M2's analysis output, not on M4 — it can proceed as soon as M2 is done.
 - M6 needs M5's drafts, but its n8n plumbing can start once M1 data exists.
 - M7 and M8 can start any time after M1; both must finish before public launch.
 - The scaffold's `Campaign`/`Lead` models remain in the schema but are superseded by
