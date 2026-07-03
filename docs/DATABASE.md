@@ -44,7 +44,57 @@ Platform users.
 
 Relations: has many `campaigns` (as owner).
 
-> Auth milestone (M1) will add credential columns (e.g. `passwordHash`) via migration.
+> Auth milestone (M2) will add credential columns (e.g. `passwordHash`) via migration.
+
+### `businesses`
+
+A prospect business — the operative entity of the lead management module (M1) and the
+row every pipeline stage (analysis, audit, outreach) operates on.
+
+| Column      | Type             | Notes                                              |
+| ----------- | ---------------- | -------------------------------------------------- |
+| `id`        | `String`         | PK, cuid                                           |
+| `name`      | `String`         | Required                                           |
+| `website`   | `String?`        | Raw URL exactly as entered/imported                |
+| `domain`    | `String?`        | **Unique** — normalized from `website` (see below) |
+| `email`     | `String?`        | Validated on write                                 |
+| `phone`     | `String?`        |                                                    |
+| `industry`  | `String?`        |                                                    |
+| `country`   | `String?`        |                                                    |
+| `city`      | `String?`        |                                                    |
+| `status`    | `BusinessStatus` | Pipeline stage, `NEW` default (full list below)    |
+| `notes`     | `String?`        | Free text                                          |
+| `createdAt` | `DateTime`       |                                                    |
+| `updatedAt` | `DateTime`       |                                                    |
+
+`BusinessStatus` (pipeline order): `NEW` → `ANALYZED` → `AUDITED` → `EMAIL_DRAFTED` →
+`EMAIL_SENT` → `RESPONDED` → `MEETING_BOOKED` → `CLIENT`, plus `ARCHIVED` (terminal,
+reachable from any stage).
+
+Relations: many-to-many with `tags` (implicit Prisma join table `_BusinessToTag`).
+Indexes: `(status)`, `(industry)`, `(country)`, `(name)`, `(email)`, `(createdAt)` —
+these back the list view's filters, search, and default sort.
+
+**Domain normalization** (implemented in
+`apps/api/src/modules/businesses/domain.ts`): lowercase the hostname, strip protocol,
+credentials, port, path/query/fragment, and a leading `www.`; unicode hostnames become
+punycode. `https://www.Acme.com/about` → `acme.com`. The unique constraint on the
+normalized `domain` is the duplicate-prevention mechanism for both API writes (`409
+CONFLICT`) and CSV imports (rows reported as duplicates). Businesses without a website
+have `domain = NULL`, which Postgres exempts from uniqueness.
+
+### `tags`
+
+Free-form labels attachable to any business (`hot`, `q3-batch`, ...).
+
+| Column      | Type       | Notes      |
+| ----------- | ---------- | ---------- |
+| `id`        | `String`   | PK, cuid   |
+| `name`      | `String`   | **Unique** |
+| `createdAt` | `DateTime` |            |
+
+Relations: many-to-many with `businesses`. Tags are created on demand
+(`connectOrCreate`) when referenced by name through the API.
 
 ### `campaigns`
 
@@ -118,10 +168,15 @@ SetNull rationale: jobs are an audit/operations record; they outlive campaign de
 
 ```mermaid
 erDiagram
+    businesses }o--o{ tags : labelled
     users ||--o{ campaigns : owns
     campaigns ||--o{ leads : contains
     campaigns |o--o{ scrape_jobs : "tracked by"
 ```
+
+> `campaigns`/`leads` are scaffold-era models superseded by `businesses` as the
+> operative lead entity; their future (repurpose vs. remove) is decided with M7 — see
+> [ROADMAP.md](ROADMAP.md).
 
 ## Index policy
 
@@ -132,9 +187,13 @@ erDiagram
 
 ## Migration strategy
 
-- **Tooling:** Prisma Migrate. Migrations live in `apps/api/prisma/migrations/`.
+- **Tooling:** Prisma Migrate. Migrations live in `apps/api/prisma/migrations/` — the
+  first one (`20260703091443_init_lead_management`) creates the full schema above.
 - **Create (dev):** `./scripts/db-migrate.sh <name>` (wraps `prisma migrate dev`) against
   the local Compose Postgres. Commit the generated SQL with the schema change.
+- **Tests:** the Vitest global setup applies migrations to the test database
+  (`TEST_DATABASE_URL`, default `omnistacks_test`) before integration tests run — in CI
+  this is a `postgres:16` service container.
 - **Apply (prod):** automatic — the API container's entrypoint
   (`docker/api/entrypoint.sh`) runs `prisma migrate deploy` before starting the server.
   Deploys are self-contained; there is no manual migration step.

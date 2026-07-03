@@ -4,6 +4,13 @@ The project is built in milestones. Each milestone is independently testable: it
 clear scope, explicit completion criteria, and a way to verify it without the milestones
 after it.
 
+The core pipeline the platform automates mirrors the `BusinessStatus` enum:
+
+```
+NEW → ANALYZED → AUDITED → EMAIL_DRAFTED → EMAIL_SENT → RESPONDED → MEETING_BOOKED → CLIENT
+                                                                             (or ARCHIVED)
+```
+
 Status legend: ✅ done · 🚧 in progress · ⬜ not started
 
 ---
@@ -23,11 +30,38 @@ schema, health endpoints, CI, scripts, documentation.
 
 ---
 
-## M1 — Authentication & user management ⬜
+## M1 — Lead management ✅
+
+**Scope:** the foundation module every future feature builds on. `Business` and `Tag`
+models with normalized, duplicate-proof domains; full CRUD REST API with pagination,
+sorting, filtering, and search; CSV import with per-row validation and an import summary;
+business list/detail/import pages in the web app; repository → service → thin controller
+architecture with Zod validation and structured (pino) logging; unit + integration tests.
+
+**Completion criteria (met):**
+
+- [x] `Business`/`Tag` Prisma models migrated, domains normalized and unique, search
+      columns indexed
+- [x] `GET/POST /api/businesses`, `GET/PATCH/DELETE /api/businesses/:id` with
+      pagination, sorting, filtering (status/industry/country/tag), and free-text search
+- [x] `POST /api/businesses/import` (text/csv) validates email/website/duplicates per row
+      and returns a summary (imported/skipped/errors/duplicates)
+- [x] Web: business list (search, filters, status badges, pagination), business detail
+      (edit/delete), CSV import page with summary view
+- [x] Structured logs for requests, imports, and validation failures
+- [x] Unit tests (domain normalization, CSV analysis, service rules) and integration
+      tests (all endpoints incl. error envelopes) pass in CI against Postgres
+
+**Independent test:** import a CSV, then browse/search/filter/edit/delete via the UI or
+curl — no auth, scraping, or AI required.
+
+---
+
+## M2 — Authentication & user management ⬜
 
 **Scope:** JWT-based auth on the API (see [API.md](API.md)), register/login/refresh
 endpoints, password hashing, `ADMIN`/`MEMBER` role enforcement middleware, auth screens in
-the web app.
+the web app, ownership semantics for businesses (who can see/edit what).
 
 **Completion criteria:**
 
@@ -43,29 +77,11 @@ the token.
 
 ---
 
-## M2 — Campaign & lead CRUD ⬜
-
-**Scope:** REST resources for campaigns and leads (list/get/create/update/archive),
-pagination and filtering per [API.md](API.md), CSV lead import (`source=IMPORTED`),
-campaign/lead pages in the web app.
-
-**Completion criteria:**
-
-- [ ] Full CRUD for `/api/campaigns` and `/api/campaigns/:id/leads` with Zod validation
-- [ ] Ownership enforced: users only see their own campaigns (admins see all)
-- [ ] CSV import creates leads with per-row error reporting
-- [ ] Web: campaign list/detail, lead table with status filters
-- [ ] Integration tests for every endpoint incl. validation failures
-
-**Independent test:** exercise the API with curl/tests only — no worker or n8n required.
-
----
-
 ## M3 — Job queue & worker execution loop ⬜
 
-**Scope:** the worker actually consumes `scrape_jobs`: atomic claiming (`SKIP LOCKED`),
-`WORKER_CONCURRENCY` parallel handlers, attempts/backoff/timeouts, `POST /api/jobs` +
-job status endpoints, dead-letter handling (`FAILED` after max attempts).
+**Scope:** the worker consumes `scrape_jobs`: atomic claiming (`SKIP LOCKED`),
+`WORKER_CONCURRENCY` parallel handlers, attempts/backoff/timeouts, job status endpoints,
+dead-letter handling (`FAILED` after max attempts).
 
 **Completion criteria:**
 
@@ -81,17 +97,18 @@ verify retry.
 
 ---
 
-## M4 — Playwright scraping pipeline ⬜
+## M4 — Website analysis (Playwright) ⬜
 
-**Scope:** `SCRAPE` job handler in `apps/worker/src/jobs/`, per-source scraper modules
-using `src/browser.ts`, dedupe on insert (email/URL), politeness controls (delays,
-concurrency caps, robots awareness), scraped leads land as `NEW`.
+**Scope:** `SCRAPE`/analysis job handlers that visit a business's website with
+Playwright, capture structured facts (tech stack, contact info, page content extracts,
+performance basics), persist them, and move the business `NEW → ANALYZED`. Politeness
+controls (delays, concurrency caps, robots awareness).
 
 **Completion criteria:**
 
-- [ ] A scrape job against a fixture site (served locally in tests) produces correct
-      `Lead` rows
-- [ ] Re-running the same job does not duplicate leads
+- [ ] An analysis job against a fixture site (served locally in tests) produces the
+      expected structured result and status transition
+- [ ] Re-running a job is idempotent (no duplicate data)
 - [ ] Failures (timeouts, blocked pages) mark the job `FAILED` with a useful `error`
 - [ ] Scraper respects configured rate limits
 
@@ -99,68 +116,69 @@ concurrency caps, robots awareness), scraped leads land as `NEW`.
 
 ---
 
-## M5 — LLM enrichment & scoring ⬜
+## M5 — AI audits & scoring (OpenRouter) ⬜
 
-**Scope:** `ENRICH` and `SCORE` job handlers calling OpenRouter through the shared client;
-prompts and JSON schemas exactly as specified in [PROMPTS.md](PROMPTS.md); Zod validation
-of model output; retry on malformed JSON; cost logging (token usage).
+**Scope:** LLM job handlers using the prompts in [PROMPTS.md](PROMPTS.md): generate a
+website/business audit from analysis output (`ANALYZED → AUDITED`) and score fit. Zod
+validation of model output, retry on malformed JSON, token/cost logging.
 
 **Completion criteria:**
 
-- [ ] Enrichment writes schema-valid JSON to `Lead.enrichment`, sets `status=ENRICHED`
-- [ ] Scoring writes `score` (0–100) and sets `QUALIFIED`/`DISQUALIFIED` per threshold
+- [ ] Audit output is schema-valid JSON persisted with prompt version metadata
 - [ ] Malformed model output is retried once, then fails the job (never stored raw)
 - [ ] Token usage per job is logged
 - [ ] Tests run against a mocked OpenRouter (no live API calls in CI)
 
-**Independent test:** seed leads manually (no scraping needed), run enrichment against the
-mock, assert stored JSON validates.
+**Independent test:** seed analyzed businesses, run audits against the mock, assert
+stored JSON validates and statuses transition.
 
 ---
 
-## M6 — n8n outreach integration ⬜
+## M6 — Outreach: email drafting, sending & n8n ⬜
 
-**Scope:** the workflows planned in [N8N.md](N8N.md): outreach sequence trigger from the
-API, status callbacks from n8n to the API (`CONTACTED`/`CONVERTED`), failure alerting,
-webhook auth (shared secret), workflow JSON committed to `n8n/workflows/`.
+**Scope:** personalized email drafting via OpenRouter (`AUDITED → EMAIL_DRAFTED`), the
+n8n workflows planned in [N8N.md](N8N.md) for sending and follow-ups
+(`EMAIL_DRAFTED → EMAIL_SENT`), reply handling callbacks
+(`RESPONDED`/`MEETING_BOOKED`), webhook auth (shared secret), workflow JSON committed to
+`n8n/workflows/`.
 
 **Completion criteria:**
 
-- [ ] Qualified lead triggers the outreach workflow via webhook
-- [ ] n8n callback updates lead status through the public API (authenticated)
+- [ ] Drafts are generated, stored, and reviewable before sending
+- [ ] n8n sequence sends and reports back status transitions through the API
 - [ ] Webhook endpoints reject requests without the shared secret
 - [ ] All workflows exported and committed with the `NN-short-description.json` convention
 
 **Independent test:** fire the webhooks manually with curl against a local n8n; assert
-lead status transitions.
+business status transitions.
 
 ---
 
 ## M7 — Dashboard & analytics ⬜
 
-**Scope:** web dashboard with campaign funnel metrics (leads by status, conversion rates,
-job throughput), aggregate endpoints on the API, empty/loading/error states.
+**Scope:** web dashboard with pipeline funnel metrics (businesses by status, conversion
+rates, job throughput), aggregate endpoints on the API, empty/loading/error states.
 
 **Completion criteria:**
 
-- [ ] `GET /api/campaigns/:id/stats` returns funnel counts in one query round-trip
-- [ ] Dashboard renders metrics for a seeded campaign
-- [ ] p95 stats endpoint latency < 500ms on 100k seeded leads
+- [ ] `GET /api/stats/pipeline` returns funnel counts in one query round-trip
+- [ ] Dashboard renders metrics for a seeded pipeline
+- [ ] p95 stats endpoint latency < 500ms on 100k seeded businesses
 
-**Independent test:** seed a large campaign via script, verify numbers match SQL spot
+**Independent test:** seed a large dataset via script, verify numbers match SQL spot
 checks.
 
 ---
 
 ## M8 — Production hardening ⬜
 
-**Scope:** structured logging (pino), request IDs across api/worker, per-user rate
-limiting, backups per [DEPLOYMENT.md](DEPLOYMENT.md), TLS reverse proxy config, image
-pinning + vulnerability scanning in CI, load test baseline.
+**Scope:** request IDs propagated across api/worker (api side exists since M1), per-user
+rate limiting, backups per [DEPLOYMENT.md](DEPLOYMENT.md), TLS reverse proxy config,
+image pinning + vulnerability scanning in CI, load test baseline.
 
 **Completion criteria:**
 
-- [ ] All logs structured JSON with request/job correlation IDs
+- [ ] All services log structured JSON with request/job correlation IDs
 - [ ] Backup + restore procedure executed successfully at least once (documented drill)
 - [ ] Rate limits return `429` with `Retry-After`
 - [ ] CI includes image scan; deploys are pinned digests
@@ -173,7 +191,12 @@ run the load test script.
 
 ## Sequencing notes
 
-- M1 → M2 are strictly ordered (ownership needs auth).
-- M3 unblocks M4 and M5, which can proceed **in parallel**.
-- M6 needs M2 (lead statuses) but only a stub of M5 (a manually qualified lead).
-- M7 and M8 can start any time after M2; both must finish before public launch.
+- **M1 (done)** deliberately precedes auth: the lead pipeline is the product's core and
+  every later milestone operates on `Business` rows.
+- M2 (auth) should land before any deployment that faces the internet.
+- M3 unblocks M4 and M5; M4 and M5 can then proceed **in parallel**.
+- M6 needs M5's drafts, but its n8n plumbing can start once M1 data exists.
+- M7 and M8 can start any time after M1; both must finish before public launch.
+- The scaffold's `Campaign`/`Lead` models remain in the schema but are superseded by
+  `Business` as the operative entity; they will be repurposed or removed when campaign
+  grouping is designed (decision due with M7).

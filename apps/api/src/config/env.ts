@@ -7,6 +7,7 @@ config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.e
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   API_PORT: z.coerce.number().int().positive().default(4000),
   API_CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),

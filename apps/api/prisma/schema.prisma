@@ -34,6 +34,61 @@ enum UserRole {
 }
 
 // ---------------------------------------------------------------------------
+// Businesses (lead management)
+// ---------------------------------------------------------------------------
+
+model Business {
+  id       String  @id @default(cuid())
+  name     String
+  /// Raw website URL as entered/imported
+  website  String?
+  /// Normalized domain derived from website (lowercase, no www/protocol/path).
+  /// Uniqueness is the duplicate-prevention mechanism for imports and creates.
+  domain   String? @unique
+  email    String?
+  phone    String?
+  industry String?
+  country  String?
+  city     String?
+  status   BusinessStatus @default(NEW)
+  notes    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags Tag[]
+
+  @@index([status])
+  @@index([industry])
+  @@index([country])
+  @@index([name])
+  @@index([email])
+  @@index([createdAt])
+  @@map("businesses")
+}
+
+enum BusinessStatus {
+  NEW
+  ANALYZED
+  AUDITED
+  EMAIL_DRAFTED
+  EMAIL_SENT
+  RESPONDED
+  MEETING_BOOKED
+  CLIENT
+  ARCHIVED
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  businesses Business[]
+
+  @@map("tags")
+}
+
+// ---------------------------------------------------------------------------
 // Campaigns
 // ---------------------------------------------------------------------------
 

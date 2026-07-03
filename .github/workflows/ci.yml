@@ -11,8 +11,24 @@ concurrency:
 
 jobs:
   quality:
-    name: Typecheck & build
+    name: Typecheck, test & build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: omnistacks
+          POSTGRES_PASSWORD: omnistacks
+          POSTGRES_DB: omnistacks_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omnistacks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://omnistacks:omnistacks@localhost:5432/omnistacks_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +53,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
