@@ -14,6 +14,12 @@ export default defineConfig({
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
       DATABASE_URL: testDatabaseUrl,
+      SCREENSHOT_STORAGE_DIR: './storage/test-screenshots',
+      ANALYSIS_NAVIGATION_TIMEOUT_MS: '3000',
+      ANALYSIS_STABLE_TIMEOUT_MS: '500',
     },
+    // Real Playwright navigations + polling for async analysis completion.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

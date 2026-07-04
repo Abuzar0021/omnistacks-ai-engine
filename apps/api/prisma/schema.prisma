@@ -38,24 +38,25 @@ enum UserRole {
 // ---------------------------------------------------------------------------
 
 model Business {
-  id       String  @id @default(cuid())
-  name     String
+  id        String         @id @default(cuid())
+  name      String
   /// Raw website URL as entered/imported
-  website  String?
+  website   String?
   /// Normalized domain derived from website (lowercase, no www/protocol/path).
   /// Uniqueness is the duplicate-prevention mechanism for imports and creates.
-  domain   String? @unique
-  email    String?
-  phone    String?
-  industry String?
-  country  String?
-  city     String?
-  status   BusinessStatus @default(NEW)
-  notes    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  domain    String?        @unique
+  email     String?
+  phone     String?
+  industry  String?
+  country   String?
+  city      String?
+  status    BusinessStatus @default(NEW)
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  tags Tag[]
+  tags            Tag[]
+  websiteAnalyses WebsiteAnalysis[]
 
   @@index([status])
   @@index([industry])
@@ -86,6 +87,85 @@ model Tag {
   businesses Business[]
 
   @@map("tags")
+}
+
+// ---------------------------------------------------------------------------
+// Website analysis (collects raw website data for a business — no AI, no
+// scoring; see docs/ARCHITECTURE.md for the module's scope boundary)
+// ---------------------------------------------------------------------------
+
+model WebsiteAnalysis {
+  id         String                @id @default(cuid())
+  businessId String
+  status     WebsiteAnalysisStatus @default(PENDING)
+
+  /// business.website at the time the analysis was requested
+  requestedUrl  String
+  /// URL after following redirects
+  finalUrl      String?
+  statusCode    Int?
+  redirectCount Int?
+
+  title           String?
+  metaDescription String?
+  canonicalUrl    String?
+  language        String?
+  faviconUrl      String?
+
+  /// { h1: string[], h2: string[], ..., h6: string[] }
+  headings    Json?
+  /// Open Graph meta tags, key -> content
+  openGraph   Json?
+  /// Twitter Card meta tags, key -> content
+  twitterCard Json?
+  /// Parsed application/ld+json blocks
+  jsonLd      Json?
+
+  /// { href, text }[]
+  internalLinks   Json?
+  externalLinks   Json?
+  navigationLinks Json?
+  footerLinks     Json?
+  /// { src, alt }[]
+  images          Json?
+  /// { src, type }[]
+  videos          Json?
+  /// { action, method, fieldCount, fieldNames }[]
+  contactForms    Json?
+  /// deduplicated strings
+  emails          Json?
+  phones          Json?
+  /// { platform, url }[]
+  socialLinks     Json?
+  /// detected technology names, e.g. ["WORDPRESS", "GOOGLE_ANALYTICS"]
+  technologies    Json?
+
+  screenshotPath     String?
+  screenshotWidth    Int?
+  screenshotHeight   Int?
+  screenshotByteSize Int?
+  screenshotMimeType String?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("website_analyses")
+}
+
+enum WebsiteAnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
 }
 
 // ---------------------------------------------------------------------------

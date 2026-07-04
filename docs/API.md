@@ -204,3 +204,49 @@ Rows with an invalid email/website/status are rejected individually; duplicate d
 
 `row` is the 1-based CSV line number (the header is line 1). `reason` is
 `duplicate_in_file` or `already_exists`.
+
+### Website analyses
+
+Data collection only (see [ARCHITECTURE.md](ARCHITECTURE.md)) — no AI, scoring, email,
+or n8n. Analyses run asynchronously; `POST` returns immediately with a `PENDING` record.
+
+| Endpoint                                            | Description                                                                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/businesses/:businessId/website-analyses` | Start an analysis; `202` with the `PENDING` record; `404` unknown business; `422` business has no website                      |
+| `GET /api/businesses/:businessId/website-analyses`  | List analyses for a business, paginated, newest first                                                                          |
+| `GET /api/website-analyses/:id`                     | Fetch one — serves both "check status" (`status` field) and "retrieve results" (the same resource, populated once `COMPLETED`) |
+| `GET /api/website-analyses/:id/screenshot`          | Screenshot metadata (`width`, `height`, `byteSize`, `mimeType`, `url`); `404` if not yet captured                              |
+| `GET /api/website-analyses/:id/screenshot/file`     | The full-page PNG itself, served with `Content-Type: image/png` (the `url` field above points here)                            |
+
+List query parameters: `page`, `limit` (same conventions as businesses; sort is fixed to
+`-createdAt`).
+
+**Analysis shape** (abbreviated — see [DATABASE.md](DATABASE.md#website_analyses) for
+every captured field):
+
+```json
+{
+  "data": {
+    "id": "cmr...",
+    "businessId": "cmr...",
+    "status": "COMPLETED",
+    "requestedUrl": "https://acme.com",
+    "finalUrl": "https://acme.com/",
+    "statusCode": 200,
+    "redirectCount": 0,
+    "title": "Acme Corp",
+    "technologies": ["WORDPRESS", "GOOGLE_ANALYTICS"],
+    "emails": ["hello@acme.com"],
+    "phones": ["+1 (555) 123-4567"],
+    "screenshotWidth": 1280,
+    "screenshotHeight": 4096,
+    "durationMs": 2140,
+    "error": null,
+    "createdAt": "2026-07-03T18:00:00.000Z"
+  }
+}
+```
+
+A successful completion promotes the parent business from `NEW` to `ANALYZED` (a no-op if
+it's already past `NEW`) — this is the only side effect the module has outside its own
+table.

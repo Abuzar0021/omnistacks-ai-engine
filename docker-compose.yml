@@ -40,8 +40,15 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.5}
+      PLAYWRIGHT_HEADLESS: 'true'
+      ANALYSIS_MAX_CONCURRENCY: ${ANALYSIS_MAX_CONCURRENCY:-2}
+      ANALYSIS_NAVIGATION_TIMEOUT_MS: ${ANALYSIS_NAVIGATION_TIMEOUT_MS:-30000}
+      ANALYSIS_STABLE_TIMEOUT_MS: ${ANALYSIS_STABLE_TIMEOUT_MS:-5000}
+      SCREENSHOT_STORAGE_DIR: ./storage/screenshots
     ports:
       - '${API_PORT:-4000}:4000'
+    volumes:
+      - api_screenshots:/app/apps/api/storage/screenshots
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,3 +117,4 @@ services:
 volumes:
   postgres_data:
   n8n_data:
+  api_screenshots:
