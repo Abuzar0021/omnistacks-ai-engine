@@ -19,6 +19,14 @@ export class WebsiteAnalysisRepository {
     return this.db.websiteAnalysis.findUnique({ where: { id } });
   }
 
+  /** Most recent successfully completed analysis for a business, if any. */
+  findLatestCompleted(businessId: string): Promise<WebsiteAnalysis | null> {
+    return this.db.websiteAnalysis.findFirst({
+      where: { businessId, status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async listByBusiness(
     params: WebsiteAnalysisListParams,
   ): Promise<{ items: WebsiteAnalysis[]; total: number }> {

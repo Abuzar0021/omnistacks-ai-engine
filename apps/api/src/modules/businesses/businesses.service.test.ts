@@ -15,6 +15,7 @@ function business(overrides: Partial<BusinessWithTags> = {}): BusinessWithTags {
     country: null,
     city: null,
     status: 'NEW',
+    score: null,
     notes: null,
     createdAt: new Date(),
     updatedAt: new Date(),

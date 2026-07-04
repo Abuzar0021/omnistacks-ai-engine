@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
+import { BusinessAuditDetailPage } from './pages/BusinessAuditDetailPage';
 import { BusinessDetailPage } from './pages/BusinessDetailPage';
 import { BusinessListPage } from './pages/BusinessListPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -37,6 +38,10 @@ export function App() {
           <Route
             path="/businesses/:businessId/website-analyses/:analysisId"
             element={<WebsiteAnalysisDetailPage />}
+          />
+          <Route
+            path="/businesses/:businessId/audits/:auditId"
+            element={<BusinessAuditDetailPage />}
           />
           <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<p className="text-muted">Page not found.</p>} />

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteBusiness, getBusiness, updateBusiness } from '../api/businesses';
 import { ApiError } from '../api/client';
+import { BusinessAuditPanel } from '../components/BusinessAuditPanel';
 import { StatusBadge } from '../components/StatusBadge';
 import { WebsiteAnalysisPanel } from '../components/WebsiteAnalysisPanel';
 import { BUSINESS_STATUSES, type Business, type BusinessStatus } from '../types/business';
@@ -139,6 +140,9 @@ export function BusinessDetailPage() {
         <span className="text-muted">
           Domain: <strong>{business.domain ?? '—'}</strong>
         </span>
+        <span className="text-muted">
+          Score: <strong>{business.score ?? '—'}</strong>
+        </span>
         <span className="text-muted">Created: {new Date(business.createdAt).toLocaleString()}</span>
         <span className="text-muted">Updated: {new Date(business.updatedAt).toLocaleString()}</span>
       </div>
@@ -252,6 +256,10 @@ export function BusinessDetailPage() {
       </form>
 
       <WebsiteAnalysisPanel businessId={business.id} hasWebsite={Boolean(business.website)} />
+      <BusinessAuditPanel
+        businessId={business.id}
+        hasCompletedAnalysis={business.status !== 'NEW'}
+      />
     </div>
   );
 }

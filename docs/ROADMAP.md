@@ -101,7 +101,7 @@ pages — no auth, job queue, or AI required.
 
 ---
 
-## M3 — AI audits & scoring (OpenRouter) ⬜
+## M3 — AI audits & scoring (OpenRouter) ✅
 
 > Reprioritized ahead of authentication and the generic job queue — this is the fastest
 > path to outreach actually going out (see [Sequencing notes](#sequencing-notes)).
@@ -110,12 +110,12 @@ pages — no auth, job queue, or AI required.
 website/business audit from the M2 analysis output (`ANALYZED → AUDITED`) and score fit.
 Zod validation of model output, retry on malformed JSON, token/cost logging.
 
-**Completion criteria:**
+**Completion criteria (met):**
 
-- [ ] Audit output is schema-valid JSON persisted with prompt version metadata
-- [ ] Malformed model output is retried once, then fails the job (never stored raw)
-- [ ] Token usage per job is logged
-- [ ] Tests run against a mocked OpenRouter (no live API calls in CI)
+- [x] Audit output is schema-valid JSON persisted with prompt version metadata
+- [x] Malformed model output is retried once, then fails the job (never stored raw)
+- [x] Token usage per job is logged
+- [x] Tests run against a mocked OpenRouter (no live API calls in CI)
 
 **Independent test:** seed analyzed businesses (M2 output), run audits against the mock,
 assert stored JSON validates and statuses transition.

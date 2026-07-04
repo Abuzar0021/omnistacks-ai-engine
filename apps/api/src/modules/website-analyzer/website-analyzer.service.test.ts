@@ -2,7 +2,7 @@ import type { Business, WebsiteAnalysis } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { NotFoundError, UnprocessableError } from '../../lib/errors.js';
 import type { BusinessRepository } from '../businesses/businesses.repository.js';
-import { ConcurrencyLimiter } from './concurrency-limiter.js';
+import { ConcurrencyLimiter } from '../../lib/concurrency-limiter.js';
 import type { CaptureResult } from './types.js';
 import type { WebsiteAnalysisRepository } from './website-analyzer.repository.js';
 import { WebsiteAnalysisService } from './website-analyzer.service.js';
@@ -31,6 +31,7 @@ function business(overrides: Partial<Business> = {}): Business {
     country: null,
     city: null,
     status: 'NEW',
+    score: null,
     notes: null,
     createdAt: new Date(),
     updatedAt: new Date(),

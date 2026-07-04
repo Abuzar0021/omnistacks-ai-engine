@@ -16,6 +16,14 @@ const envSchema = z.object({
   OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
   OPENROUTER_MODEL: z.string().default('anthropic/claude-sonnet-4.5'),
 
+  // Business audits (docs/PROMPTS.md "business-audit-v1")
+  BUSINESS_CONTEXT: z
+    .string()
+    .default(
+      'We help small and mid-sized businesses improve their website, SEO, and online presence. Ideal customers have an outdated or underperforming website and no in-house web/marketing team.',
+    ),
+  AUDIT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
+
   // Website analyzer (Playwright-driven data collection)
   PLAYWRIGHT_HEADLESS: z
     .string()

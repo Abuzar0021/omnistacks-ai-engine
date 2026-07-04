@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import {
+  businessAuditsRouter,
+  auditsRouter,
+} from '../modules/business-audit/business-audit.routes.js';
 import { businessesRouter } from '../modules/businesses/businesses.routes.js';
 import {
   businessWebsiteAnalysesRouter,
@@ -12,6 +16,8 @@ apiRouter.use('/health', healthRouter);
 apiRouter.use('/businesses', businessesRouter);
 apiRouter.use('/businesses/:businessId/website-analyses', businessWebsiteAnalysesRouter);
 apiRouter.use('/website-analyses', websiteAnalysesRouter);
+apiRouter.use('/businesses/:businessId/audits', businessAuditsRouter);
+apiRouter.use('/business-audits', auditsRouter);
 
 // Feature routers are mounted here as they are built, e.g.:
 // apiRouter.use('/campaigns', campaignsRouter);

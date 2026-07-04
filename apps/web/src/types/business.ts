@@ -23,6 +23,8 @@ export interface Business {
   country: string | null;
   city: string | null;
   status: BusinessStatus;
+  /** Denormalized from the latest completed business audit. */
+  score: number | null;
   notes: string | null;
   tags: string[];
   createdAt: string;
