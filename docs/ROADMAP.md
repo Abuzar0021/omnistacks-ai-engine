@@ -69,7 +69,7 @@ numbers, social links, and best-effort technology detection (WordPress, Shopify,
 Squarespace, React, Next.js, Angular, Vue, Google Analytics, Google Tag Manager,
 Cloudflare, Facebook Pixel). Runs asynchronously in-process (`PENDING → RUNNING →
 COMPLETED`/`FAILED`) behind a small concurrency gate — not the durable job queue
-scoped for M4.
+scoped for M6.
 
 **Completion criteria (met):**
 
@@ -101,7 +101,55 @@ pages — no auth, job queue, or AI required.
 
 ---
 
-## M3 — Authentication & user management ⬜
+## M3 — AI audits & scoring (OpenRouter) ⬜
+
+> Reprioritized ahead of authentication and the generic job queue — this is the fastest
+> path to outreach actually going out (see [Sequencing notes](#sequencing-notes)).
+
+**Scope:** LLM job handlers using the prompts in [PROMPTS.md](PROMPTS.md): generate a
+website/business audit from the M2 analysis output (`ANALYZED → AUDITED`) and score fit.
+Zod validation of model output, retry on malformed JSON, token/cost logging.
+
+**Completion criteria:**
+
+- [ ] Audit output is schema-valid JSON persisted with prompt version metadata
+- [ ] Malformed model output is retried once, then fails the job (never stored raw)
+- [ ] Token usage per job is logged
+- [ ] Tests run against a mocked OpenRouter (no live API calls in CI)
+
+**Independent test:** seed analyzed businesses (M2 output), run audits against the mock,
+assert stored JSON validates and statuses transition.
+
+---
+
+## M4 — Outreach: email drafting, sending & n8n ⬜
+
+**Scope:** personalized email drafting via OpenRouter (`AUDITED → EMAIL_DRAFTED`), the
+n8n workflows planned in [N8N.md](N8N.md) for sending (via the operator's own
+Gmail/SMTP account, per the current single-operator deployment — see
+[N8N.md](N8N.md) for connection setup) and follow-ups
+(`EMAIL_DRAFTED → EMAIL_SENT`), reply handling callbacks
+(`RESPONDED`/`MEETING_BOOKED`), webhook auth (shared secret), workflow JSON committed to
+`n8n/workflows/`.
+
+**Completion criteria:**
+
+- [ ] Drafts are generated, stored, and reviewable before sending
+- [ ] n8n sequence sends via the connected Gmail/SMTP account and reports back status
+      transitions through the API
+- [ ] Webhook endpoints reject requests without the shared secret
+- [ ] All workflows exported and committed with the `NN-short-description.json` convention
+
+**Independent test:** fire the webhooks manually with curl against a local n8n; assert
+business status transitions.
+
+---
+
+## M5 — Authentication & user management ⬜
+
+> Deferred behind M3/M4: the platform is currently run by a single operator, not exposed
+> publicly, so auth isn't blocking outreach. **Must land before any public/multi-user
+> deployment** — see [Sequencing notes](#sequencing-notes).
 
 **Scope:** JWT-based auth on the API (see [API.md](API.md)), register/login/refresh
 endpoints, password hashing, `ADMIN`/`MEMBER` role enforcement middleware, auth screens in
@@ -121,7 +169,10 @@ the token.
 
 ---
 
-## M4 — Job queue & worker execution loop ⬜
+## M6 — Job queue & worker execution loop ⬜
+
+> Deferred behind M3/M4: current volume doesn't need durable multi-instance queueing yet;
+> M3/M4's jobs reuse the M2-style in-process concurrency limiter for now.
 
 **Scope:** the worker consumes `scrape_jobs`: atomic claiming (`SKIP LOCKED`),
 `WORKER_CONCURRENCY` parallel handlers, attempts/backoff/timeouts, job status endpoints,
@@ -140,44 +191,6 @@ concurrency gate (M2), which stays as-is; nothing here requires changing it.
 
 **Independent test:** enqueue no-op jobs, watch them drain; kill a worker mid-job and
 verify retry.
-
----
-
-## M5 — AI audits & scoring (OpenRouter) ⬜
-
-**Scope:** LLM job handlers using the prompts in [PROMPTS.md](PROMPTS.md): generate a
-website/business audit from the M2 analysis output (`ANALYZED → AUDITED`) and score fit.
-Zod validation of model output, retry on malformed JSON, token/cost logging.
-
-**Completion criteria:**
-
-- [ ] Audit output is schema-valid JSON persisted with prompt version metadata
-- [ ] Malformed model output is retried once, then fails the job (never stored raw)
-- [ ] Token usage per job is logged
-- [ ] Tests run against a mocked OpenRouter (no live API calls in CI)
-
-**Independent test:** seed analyzed businesses (M2 output), run audits against the mock,
-assert stored JSON validates and statuses transition.
-
----
-
-## M6 — Outreach: email drafting, sending & n8n ⬜
-
-**Scope:** personalized email drafting via OpenRouter (`AUDITED → EMAIL_DRAFTED`), the
-n8n workflows planned in [N8N.md](N8N.md) for sending and follow-ups
-(`EMAIL_DRAFTED → EMAIL_SENT`), reply handling callbacks
-(`RESPONDED`/`MEETING_BOOKED`), webhook auth (shared secret), workflow JSON committed to
-`n8n/workflows/`.
-
-**Completion criteria:**
-
-- [ ] Drafts are generated, stored, and reviewable before sending
-- [ ] n8n sequence sends and reports back status transitions through the API
-- [ ] Webhook endpoints reject requests without the shared secret
-- [ ] All workflows exported and committed with the `NN-short-description.json` convention
-
-**Independent test:** fire the webhooks manually with curl against a local n8n; assert
-business status transitions.
 
 ---
 
@@ -218,15 +231,27 @@ run the load test script.
 
 ## Sequencing notes
 
-- **M2 (done)** deliberately precedes auth: the website analyzer is a core building
-  block for M5 (audits) and doesn't need user accounts to be useful or testable.
-- M3 (auth) should land before any deployment that faces the internet.
-- M4 (the durable job queue) is independent of M2/M3 and can start any time; it unblocks
-  moving heavier or higher-volume work (bulk re-analysis, scraping beyond a single
-  business) off the API process and onto `apps/worker` if that ever becomes necessary.
-- M5 depends on M2's analysis output, not on M4 — it can proceed as soon as M2 is done.
-- M6 needs M5's drafts, but its n8n plumbing can start once M1 data exists.
-- M7 and M8 can start any time after M1; both must finish before public launch.
+**Priority as of M2 completion: fastest path to real outreach.** The platform is
+currently run by a single operator (not a public/multi-tenant deployment), so M3 and M4
+were pulled ahead of auth and the durable job queue — they're what actually turns
+collected data into sent emails and booked meetings. Auth and the job queue are not
+gone, just deferred until the triggers below apply.
+
+- **M2 (done)** unblocks M3 directly — audits run against the website analyzer's output.
+  It never depended on auth.
+- **M3** depends only on M2's analysis output; it does not need M6 (the durable job
+  queue) to start — it reuses the M2-style in-process concurrency limiter, same as the
+  analyzer.
+- **M4** needs M3's audit/draft output and an email account connected in n8n (Gmail/SMTP
+  for the current single-operator setup — see [N8N.md](N8N.md)); its n8n plumbing
+  (workflow scaffolding, webhook auth) can start in parallel with M3.
+- **M5 (auth)** — build it before: (a) more than one person needs to log in, or
+  (b) the API is exposed on the public internet. Neither is true yet. Revisit after M4.
+- **M6 (job queue)** — build it when M3/M4 job volume actually outgrows the in-process
+  concurrency limiter (see [ARCHITECTURE.md](ARCHITECTURE.md) future-scaling notes), not
+  before.
+- M7 and M8 can start any time after M1; both must finish before public launch — and
+  M5 (auth) must finish before public launch too, regardless of milestone number.
 - The scaffold's `Campaign`/`Lead` models remain in the schema but are superseded by
   `Business` as the operative entity; they will be repurposed or removed when campaign
   grouping is designed (decision due with M7).
