@@ -40,8 +40,18 @@ export type AuditResponse = z.infer<typeof auditResponseSchema>;
 const SYSTEM_PROMPT = `You are a B2B opportunity auditor. Given a description of our business and our ideal
 customers, and structured data collected from a prospect's website, assess how well they
 fit and what opportunity exists to help them. Every finding must cite something present in
-the provided data — do not invent facts. Respond with a single JSON object matching the
-schema — no prose, no markdown fences.`;
+the provided data — do not invent facts.
+
+Respond with a single JSON object matching exactly this schema — no prose, no markdown
+fences, no extra keys, no renamed keys:
+{
+  "summary": string (max 500 chars),
+  "findings": [{ "category": "seo" | "performance" | "design" | "content" | "technology" | "contact" | "trust" | "other", "severity": "low" | "medium" | "high", "description": string (max 300 chars) }],
+  "score": integer 0-100,
+  "confidence": "low" | "medium" | "high",
+  "reasons": string[] (1 to 5 items, each max 200 chars),
+  "disqualifiers": string[] (optional, each max 200 chars) — hard blockers if any (wrong geography, competitor, already a client, ...)
+}`;
 
 export interface BusinessSummary {
   name: string;
