@@ -48,6 +48,21 @@ async function waitForTerminalStatus(analysisId: string, timeoutMs = 15_000) {
   }
 }
 
+/**
+ * The business-status promotion happens in a separate await *after* the
+ * analysis row is marked COMPLETED, so polling the analysis alone can race
+ * ahead of it — poll the business row too rather than assuming it's settled.
+ */
+async function waitForBusinessStatus(businessId: string, status: string, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const res = await request(app).get(`/api/businesses/${businessId}`);
+    if (res.body.data.status === status) return res.body.data;
+    if (Date.now() > deadline) return res.body.data;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 describe('POST /api/businesses/:businessId/website-analyses', () => {
   it('returns 404 for an unknown business', async () => {
     const res = await startAnalysis('does-not-exist');
@@ -171,8 +186,8 @@ describe('full analysis pipeline against a fixture site', () => {
     const started = await startAnalysis(businessId);
     await waitForTerminalStatus(started.body.data.id);
 
-    const business = await request(app).get(`/api/businesses/${businessId}`);
-    expect(business.body.data.status).toBe('ANALYZED');
+    const business = await waitForBusinessStatus(businessId, 'ANALYZED');
+    expect(business.status).toBe('ANALYZED');
   });
 
   it('follows redirects and records the final URL and redirect count', async () => {
