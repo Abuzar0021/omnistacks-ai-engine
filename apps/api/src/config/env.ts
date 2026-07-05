@@ -49,10 +49,10 @@ const envSchema = z.object({
   ANALYSIS_STABLE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   SCREENSHOT_STORAGE_DIR: z.string().default('./storage/screenshots'),
 
-  // Lead discovery (Playwright-driven directory search, docs/ARCHITECTURE.md)
-  YELP_BASE_URL: z.string().url().default('https://www.yelp.com'),
-  LEAD_DISCOVERY_MAX_CONCURRENCY: z.coerce.number().int().positive().default(1),
-  LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Lead discovery (Google Places API "Text Search", docs/ARCHITECTURE.md)
+  GOOGLE_PLACES_API_KEY: z.string().default('change-me'),
+  GOOGLE_PLACES_BASE_URL: z.string().url().default('https://places.googleapis.com'),
+  LEAD_DISCOVERY_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
 });
 
 const parsed = envSchema.safeParse(process.env);

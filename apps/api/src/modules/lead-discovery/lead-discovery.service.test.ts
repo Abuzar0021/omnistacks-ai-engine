@@ -6,7 +6,7 @@ import type { BusinessRepository } from '../businesses/businesses.repository.js'
 import type { LeadDiscoveryRepository } from './lead-discovery.repository.js';
 import type { StartDiscoveryInput } from './lead-discovery.schemas.js';
 import { LeadDiscoveryService } from './lead-discovery.service.js';
-import type { ScrapedBusiness } from './scraper.js';
+import type { ScrapedBusiness } from './places-client.js';
 
 function job(overrides: Partial<LeadDiscoveryJob> = {}): LeadDiscoveryJob {
   return {

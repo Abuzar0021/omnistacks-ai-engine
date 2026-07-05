@@ -145,25 +145,29 @@ business status transitions.
 
 ---
 
-## M9 — Lead discovery (Playwright directory search) ✅
+## M9 — Lead discovery (Google Places API) ✅
 
 > Reprioritized ahead of M5-M8, same rationale as M3/M4: this is what actually populates
 > the pipeline with businesses to work, rather than requiring every lead to be manually
 > added or CSV-imported first. Numbered M9 (after M8) rather than inserted mid-sequence
 > to avoid renumbering the already-cross-referenced M5-M8 sections below.
 
-**Scope:** given an industry + location query, scrapes a business directory (Yelp) for
-matching businesses and their websites, dedupes against existing businesses by domain
-(same rule CSV import uses), and bulk-creates the new ones with `status=NEW` — from there
-they flow through the exact same analyze → audit → draft → send pipeline as any other
-business. Deliberately **not** an official-API integration (Google Places/Yelp Fusion):
-scraping was chosen to avoid per-request API costs, at the cost of fragility (directory
-markup changes over time, breaking selectors) and being against most directories' Terms
-of Service — a disclosed, deliberate tradeoff, not an oversight. Runs asynchronously
-in-process (`PENDING → RUNNING → COMPLETED`/`FAILED`), same convention as M2/M3/M4,
-gated by its own concurrency limiter (`LEAD_DISCOVERY_MAX_CONCURRENCY`, default `1` —
-gentler than the other modules' default `2` given how much more likely scraping is to
-trip anti-bot defenses under concurrency).
+**Scope:** given an industry + location query, searches Google Places API for matching
+businesses and their websites, dedupes against existing businesses by domain (same rule
+CSV import uses), and bulk-creates the new ones with `status=NEW` — from there they flow
+through the exact same analyze → audit → draft → send pipeline as any other business.
+Runs asynchronously in-process (`PENDING → RUNNING → COMPLETED`/`FAILED`), same
+convention as M2/M3/M4, gated by its own concurrency limiter
+(`LEAD_DISCOVERY_MAX_CONCURRENCY`).
+
+**Revision note:** this milestone originally scraped Yelp's HTML directly (via
+Playwright) instead of using an official API, specifically to avoid per-request costs —
+a disclosed tradeoff at the time. In production, that scraper was reliably blocked by
+Yelp's bot detection (every search completed with an empty page title and a sub-second
+response — the signature of a block/challenge page, not a real one). No client-side
+tweaking reliably beats detection like that, so the module was rebuilt around Google
+Places API: no bot-blocking risk, at the cost of a real per-request fee past Google's
+monthly free credit (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 **Completion criteria (met):**
 
@@ -173,14 +177,12 @@ trip anti-bot defenses under concurrency).
       or limit outside `1..50`)
 - [x] `GET /api/lead-discovery/:id` reports status and (once completed) result counts;
       `GET /api/lead-discovery` lists history, paginated
-- [x] A business whose detail page fails to load is skipped rather than failing the
-      whole search
 - [x] New businesses are deduped against existing ones by normalized domain (identical
       rule to CSV import's duplicate detection) before insertion
-- [x] Unit tests for the pure outbound-link-parsing helper; a real-Playwright
-      integration test against a local fixture mimicking Yelp's search + detail page
-      shapes (not real Yelp — see [ARCHITECTURE.md](ARCHITECTURE.md)); service tests
-      with a mocked scraper covering persistence/dedup/job-lifecycle logic
+- [x] Unit tests for the pure Places-API-response mapping helpers; an integration test
+      against a local fixture mimicking Places API's response shape (no real Google
+      calls in CI); service tests with a mocked search client covering
+      persistence/dedup/job-lifecycle logic
 - [x] Web: a "Find leads" page (industry/location/country/limit form, live status,
       result counts, recent-searches history)
 
