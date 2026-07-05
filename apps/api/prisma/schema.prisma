@@ -280,6 +280,46 @@ enum EmailDraftStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Lead discovery (Playwright-driven directory search — see docs/ARCHITECTURE.md
+// for the module's scope boundary). Populates Business rows with status=NEW;
+// everything downstream (analyze/audit/draft/send) is unchanged.
+// ---------------------------------------------------------------------------
+
+model LeadDiscoveryJob {
+  id       String                 @id @default(cuid())
+  status   LeadDiscoveryJobStatus @default(PENDING)
+  industry String
+  location String
+  country  String?
+  limit    Int                    @default(20)
+
+  /// Total candidates scraped, before dedup
+  foundCount Int?
+  /// New Business rows actually created
+  createdCount Int?
+  /// Candidates skipped because the domain already existed
+  duplicateCount Int?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("lead_discovery_jobs")
+}
+
+enum LeadDiscoveryJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
 // Campaigns
 // ---------------------------------------------------------------------------
 

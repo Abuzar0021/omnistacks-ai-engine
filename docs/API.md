@@ -368,3 +368,47 @@ design (see [N8N.md](N8N.md)).
 Both endpoints are idempotent: re-delivering the same callback (or receiving callbacks out
 of order) never regresses a business or double-applies a transition — see
 `advanceStatus()` in [DATABASE.md](DATABASE.md#email_drafts).
+
+### Lead discovery
+
+Playwright-driven directory search (M9) — given an industry and location, scrapes Yelp
+for matching businesses and bulk-creates the new ones (deduped by domain) with
+`status=NEW`. Runs asynchronously, same `PENDING`/`RUNNING`/`COMPLETED`/`FAILED`
+convention as analyses/audits/drafts; `POST` returns immediately with a `PENDING` job.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for why scraping was chosen over an official API,
+and for the fragility/ToS tradeoff that comes with it.
+
+| Endpoint                      | Description                                                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/lead-discovery`    | Start a search; body `{ industry, location, country?, limit? }` (`limit` 1–50, default 20); `202` with the `PENDING` job; `400` invalid input |
+| `GET /api/lead-discovery`     | List past searches, paginated, newest first                                                                                                   |
+| `GET /api/lead-discovery/:id` | Fetch one — serves both "check status" and "retrieve results" (the same resource, populated once `COMPLETED`)                                 |
+
+List query parameters: `page`, `limit` (same conventions as businesses; sort is fixed to
+`-createdAt`).
+
+**Job shape** (abbreviated — see [DATABASE.md](DATABASE.md) for every field):
+
+```json
+{
+  "data": {
+    "id": "cmr...",
+    "status": "COMPLETED",
+    "industry": "Saloons",
+    "location": "Texas",
+    "country": "United States",
+    "limit": 20,
+    "foundCount": 14,
+    "createdCount": 11,
+    "duplicateCount": 3,
+    "durationMs": 22400,
+    "error": null,
+    "createdAt": "2026-07-05T18:00:00.000Z"
+  }
+}
+```
+
+A business whose detail page fails to load is skipped (logged) rather than failing the
+whole search. Businesses created here are ordinary `status=NEW` rows — nothing
+downstream (analyze/audit/draft/send) treats them differently from a manually-added or
+CSV-imported business.

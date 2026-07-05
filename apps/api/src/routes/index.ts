@@ -13,6 +13,7 @@ import {
   websiteAnalysesRouter,
 } from '../modules/website-analyzer/website-analyzer.routes.js';
 import { webhooksRouter } from '../modules/webhooks/webhooks.routes.js';
+import { leadDiscoveryRouter } from '../modules/lead-discovery/lead-discovery.routes.js';
 import { healthRouter } from './health.js';
 
 export const apiRouter: Router = Router();
@@ -26,6 +27,7 @@ apiRouter.use('/business-audits', auditsRouter);
 apiRouter.use('/businesses/:businessId/email-drafts', businessEmailDraftsRouter);
 apiRouter.use('/email-drafts', emailDraftsRouter);
 apiRouter.use('/webhooks', webhooksRouter);
+apiRouter.use('/lead-discovery', leadDiscoveryRouter);
 
 // Feature routers are mounted here as they are built, e.g.:
 // apiRouter.use('/campaigns', campaignsRouter);

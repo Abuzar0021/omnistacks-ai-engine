@@ -42,13 +42,13 @@ flowchart LR
 
 ## Service responsibilities
 
-| Service        | Location           | Responsibilities                                                                                                                                                                                                                                                                                                                                                                                                                                              | Explicitly NOT responsible for                                                                     |
-| -------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Web**        | `apps/web`         | UI for campaigns, leads, workflows, settings. All data access through `src/api/client.ts`.                                                                                                                                                                                                                                                                                                                                                                    | Talking to the database, OpenRouter, or n8n directly.                                              |
-| **API**        | `apps/api`         | REST endpoints, request validation (Zod), authentication/authorization, owning the Prisma schema, enqueueing `ScrapeJob` rows, the website analyzer module (Playwright-driven data collection, see below), the business-audit module (OpenRouter-driven fit scoring, see below), the email-draft module (OpenRouter-driven outreach drafting, see below), triggering n8n via `lib/n8n-client.ts`, and the `webhooks` module receiving n8n's status callbacks. | Long-running work needing durable multi-instance queueing (moves to `apps/worker` once M6 exists). |
-| **Worker**     | `apps/worker`      | Polling `ScrapeJob` rows, Playwright scraping, batch LLM enrichment/scoring, persisting results, updating job status/attempts.                                                                                                                                                                                                                                                                                                                                | Serving HTTP; defining schema (consumes API's Prisma schema).                                      |
-| **PostgreSQL** | Compose `postgres` | System of record for application data (`omnistacks` DB) and n8n state (`n8n` DB, created by `docker/postgres/init/01-create-n8n-db.sh`).                                                                                                                                                                                                                                                                                                                      | —                                                                                                  |
-| **n8n**        | Compose `n8n`      | Sending outreach email via the operator's own Gmail/SMTP credential, classifying replies. Workflow JSON is versioned in `n8n/workflows/` (see [N8N.md](N8N.md)).                                                                                                                                                                                                                                                                                              | Core data mutations (goes through the API's webhook endpoints, never the database directly).       |
+| Service        | Location           | Responsibilities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Explicitly NOT responsible for                                                                     |
+| -------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Web**        | `apps/web`         | UI for campaigns, leads, workflows, settings. All data access through `src/api/client.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                               | Talking to the database, OpenRouter, or n8n directly.                                              |
+| **API**        | `apps/api`         | REST endpoints, request validation (Zod), authentication/authorization, owning the Prisma schema, enqueueing `ScrapeJob` rows, the website analyzer module (Playwright-driven data collection, see below), the business-audit module (OpenRouter-driven fit scoring, see below), the email-draft module (OpenRouter-driven outreach drafting, see below), the lead-discovery module (Playwright-driven directory search, see below), triggering n8n via `lib/n8n-client.ts`, and the `webhooks` module receiving n8n's status callbacks. | Long-running work needing durable multi-instance queueing (moves to `apps/worker` once M6 exists). |
+| **Worker**     | `apps/worker`      | Polling `ScrapeJob` rows, Playwright scraping, batch LLM enrichment/scoring, persisting results, updating job status/attempts.                                                                                                                                                                                                                                                                                                                                                                                                           | Serving HTTP; defining schema (consumes API's Prisma schema).                                      |
+| **PostgreSQL** | Compose `postgres` | System of record for application data (`omnistacks` DB) and n8n state (`n8n` DB, created by `docker/postgres/init/01-create-n8n-db.sh`).                                                                                                                                                                                                                                                                                                                                                                                                 | —                                                                                                  |
+| **n8n**        | Compose `n8n`      | Sending outreach email via the operator's own Gmail/SMTP credential, classifying replies. Workflow JSON is versioned in `n8n/workflows/` (see [N8N.md](N8N.md)).                                                                                                                                                                                                                                                                                                                                                                         | Core data mutations (goes through the API's webhook endpoints, never the database directly).       |
 
 ## Data flow
 
@@ -163,6 +163,36 @@ Every state transition is persisted in PostgreSQL, same as the pattern above —
 introduce no new shared-state mechanism; steps 6–8 are the first place n8n and its
 shared-secret webhook contract enter the picture (see [N8N.md](N8N.md)).
 
+### Lead discovery flow (implemented, M9)
+
+1. **Search started** — `POST /api/lead-discovery` validates industry/location/limit,
+   creates a `LeadDiscoveryJob` row (`status=PENDING`), and returns immediately (`202`).
+   Execution continues in the background, gated by its own `ConcurrencyLimiter` instance
+   (`LEAD_DISCOVERY_MAX_CONCURRENCY`).
+2. **Scrape** — the job marks the row `RUNNING`, launches Chromium (Playwright, in-process
+   within `apps/api`, same rationale as the website analyzer), loads the directory's
+   (Yelp's) search-results page for the industry/location query, then visits each result's
+   detail page for its website/phone/city. A detail page that fails to load is skipped —
+   logged, not fatal to the search.
+3. **Dedup + persist** — scraped businesses are normalized to a domain (same
+   `normalizeDomain()` CSV import uses) and checked against existing businesses;
+   duplicates are counted and dropped, the rest bulk-inserted with `status=NEW` via
+   `BusinessRepository.createMany` (`skipDuplicates: true` as a race-condition backstop).
+4. **Persisted** — `foundCount`/`createdCount`/`duplicateCount` and `durationMs` are
+   written; status becomes `COMPLETED` or, on failure, `FAILED` with an `error` message.
+
+**Scraping is a deliberate, disclosed tradeoff, not an oversight:** an official API
+(Google Places, Yelp Fusion) would be more stable but has per-request costs; scraping a
+directory's HTML has no per-request cost but is fragile (markup changes silently break
+selectors) and is against most directories' Terms of Service. This module chose scraping
+for cost reasons — see [ROADMAP.md](ROADMAP.md) M9 — and should be monitored/maintained
+accordingly. New businesses it creates need nothing special downstream: they're ordinary
+`status=NEW` rows and flow through the exact same analyze → audit → draft → send pipeline
+as a manually-added or CSV-imported business.
+
+Every state transition is persisted in PostgreSQL, same as the pattern above — the module
+introduces no new shared-state mechanism.
+
 ## Folder structure
 
 ```
@@ -181,7 +211,8 @@ shared-secret webhook contract enter the picture (see [N8N.md](N8N.md)).
 │   │       │   │   └── extract/       # pure classification/extraction helpers
 │   │       │   ├── business-audit/    # OpenRouter fit scoring (M3)
 │   │       │   ├── email-draft/       # OpenRouter outreach drafting (M4)
-│   │       │   └── webhooks/          # n8n callback endpoints (M4)
+│   │       │   ├── webhooks/          # n8n callback endpoints (M4)
+│   │       │   └── lead-discovery/    # Playwright directory search (M9)
 │   │       └── routes/       # route composition (health, ...)
 │   ├── web/                  # React + Vite SPA
 │   │   └── src/
@@ -235,6 +266,8 @@ and `apps/worker/src/jobs/<job-type>.ts` — see
 | **n8n trigger failures reported as `triggered: false`, not an HTTP error or stored `FAILED` state**                                | Per [N8N.md](N8N.md)'s unavailable-tolerant design: the draft itself succeeded, only the send attempt didn't reach n8n. Surfacing it as a soft signal (rather than throwing) lets the UI offer an obvious retry without conflating "drafting failed" and "sending didn't fire" — two different failure modes.                                     |
 | **Monotonic `advanceStatus()` for webhook-driven transitions, not the simple equality check M2/M3 use**                            | Webhook delivery can be delayed, retried, or arrive out of order, and a reply can request a meeting directly (skipping `RESPONDED`) — a single "if status is exactly X" check can't express "move forward to whichever of several possible targets, never backward" (see [DATABASE.md](DATABASE.md)).                                             |
 | **Dedicated `EmailDraftStatus` enum instead of reusing `BusinessAuditStatus`**                                                     | Same shape today, same rationale as the audit/analysis enum split above — independently evolving concerns that happen to match today.                                                                                                                                                                                                             |
+| **Lead discovery scrapes Yelp directly instead of an official API (Google Places/Yelp Fusion)**                                    | Deliberate cost/reliability tradeoff: no per-request API fees, at the cost of fragility (breaks when Yelp's markup changes) and being against most directories' Terms of Service. Chosen explicitly over the API-based alternatives — see [ROADMAP.md](ROADMAP.md) M9.                                                                            |
+| **`LeadDiscoveryJob` gets `LEAD_DISCOVERY_MAX_CONCURRENCY` defaulting to `1`, lower than the other modules' default `2`**          | Scraping is more likely than the other Playwright-driven module (website analysis) to trip a directory's anti-bot defenses; a lower default concurrency is a cheap first line of defense, tunable via env like the others.                                                                                                                        |
 
 ## Future scaling strategy
 
