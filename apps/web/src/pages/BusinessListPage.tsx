@@ -60,7 +60,7 @@ export function BusinessListPage() {
     setPage(1);
   }
 
-  function toggleSort(field: 'name' | 'createdAt' | 'status') {
+  function toggleSort(field: 'name' | 'createdAt' | 'status' | 'score') {
     setSort((current) => (current === field ? `-${field}` : field));
   }
 
@@ -140,6 +140,9 @@ export function BusinessListPage() {
               <th className="th-sortable" onClick={() => toggleSort('status')}>
                 Status {sort === 'status' ? '▲' : sort === '-status' ? '▼' : ''}
               </th>
+              <th className="th-sortable" onClick={() => toggleSort('score')}>
+                Score {sort === 'score' ? '▲' : sort === '-score' ? '▼' : ''}
+              </th>
               <th>Industry</th>
               <th>Country</th>
               <th className="th-sortable" onClick={() => toggleSort('createdAt')}>
@@ -151,14 +154,14 @@ export function BusinessListPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={8} className="table-empty">
+                <td colSpan={9} className="table-empty">
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && result?.data.length === 0 && (
               <tr>
-                <td colSpan={8} className="table-empty">
+                <td colSpan={9} className="table-empty">
                   No businesses found. Add one or import a CSV.
                 </td>
               </tr>
@@ -176,6 +179,7 @@ export function BusinessListPage() {
                   <td>
                     <StatusBadge status={business.status} />
                   </td>
+                  <td className="text-muted">{business.score ?? '—'}</td>
                   <td className="text-muted">{business.industry ?? '—'}</td>
                   <td className="text-muted">{business.country ?? '—'}</td>
                   <td className="text-muted">

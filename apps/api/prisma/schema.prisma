@@ -51,12 +51,15 @@ model Business {
   country   String?
   city      String?
   status    BusinessStatus @default(NEW)
+  /// Denormalized from the latest completed BusinessAudit, for list-view sorting.
+  score     Int?
   notes     String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
   tags            Tag[]
   websiteAnalyses WebsiteAnalysis[]
+  audits          BusinessAudit[]
 
   @@index([status])
   @@index([industry])
@@ -64,6 +67,7 @@ model Business {
   @@index([name])
   @@index([email])
   @@index([createdAt])
+  @@index([score])
   @@map("businesses")
 }
 
@@ -153,7 +157,8 @@ model WebsiteAnalysis {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  audits   BusinessAudit[]
 
   @@index([businessId])
   @@index([status])
@@ -162,6 +167,58 @@ model WebsiteAnalysis {
 }
 
 enum WebsiteAnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Business audits (AI-generated, via OpenRouter — see docs/PROMPTS.md
+// "business-audit-v1"). Runs against a COMPLETED WebsiteAnalysis; no
+// scraping, sending, or n8n here — that's this module's scope boundary.
+// ---------------------------------------------------------------------------
+
+model BusinessAudit {
+  id                String              @id @default(cuid())
+  businessId        String
+  websiteAnalysisId String
+  status            BusinessAuditStatus @default(PENDING)
+
+  promptVersion String  @default("business-audit-v1")
+  model         String?
+
+  summary       String?
+  /// { category, severity, description }[]
+  findings      Json?
+  score         Int?
+  confidence    String?
+  /// string[]
+  reasons       Json?
+  /// string[]
+  disqualifiers Json?
+
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  websiteAnalysis WebsiteAnalysis @relation(fields: [websiteAnalysisId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("business_audits")
+}
+
+enum BusinessAuditStatus {
   PENDING
   RUNNING
   COMPLETED

@@ -126,7 +126,7 @@ JWT bearer tokens (implemented in M1 — see [ROADMAP.md](ROADMAP.md)):
 
 ## Endpoint reference
 
-> Auth is "none" everywhere until M2 lands; these endpoints will then require a bearer
+> Auth is "none" everywhere until M5 lands; these endpoints will then require a bearer
 > token per the strategy above.
 
 ### Health
@@ -149,7 +149,7 @@ JWT bearer tokens (implemented in M1 — see [ROADMAP.md](ROADMAP.md)):
 | `POST /api/businesses/import` | CSV import (`Content-Type: text/csv`, max 10 MB / 5000 rows)                   |
 
 **List query parameters** — `page`, `limit`, `sort`
-(`name`/`createdAt`/`updatedAt`/`status`, `-` prefix for descending; default
+(`name`/`createdAt`/`updatedAt`/`status`/`score`, `-` prefix for descending; default
 `-createdAt`), `status` (exact enum value), `industry` and `country`
 (case-insensitive exact), `tag` (case-insensitive tag name), `q` (case-insensitive
 substring across name, domain, email, city).
@@ -170,6 +170,7 @@ substring across name, domain, email, city).
     "city": "New York",
     "status": "NEW",
     "notes": null,
+    "score": null,
     "tags": ["priority", "saas"],
     "createdAt": "2026-07-03T09:25:40.145Z",
     "updatedAt": "2026-07-03T09:25:40.145Z"
@@ -250,3 +251,54 @@ every captured field):
 A successful completion promotes the parent business from `NEW` to `ANALYZED` (a no-op if
 it's already past `NEW`) — this is the only side effect the module has outside its own
 table.
+
+### Business audits
+
+LLM-generated fit scoring (M3, see [PROMPTS.md](PROMPTS.md) for the `business-audit-v1`
+prompt) — runs against a business's most recent `COMPLETED` website analysis. Audits run
+asynchronously, same `PENDING`/`RUNNING`/`COMPLETED`/`FAILED` convention as website
+analyses; `POST` returns immediately with a `PENDING` record.
+
+| Endpoint                                  | Description                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/businesses/:businessId/audits` | Start an audit; `202` with the `PENDING` record; `404` unknown business; `422` no `COMPLETED` website analysis yet             |
+| `GET /api/businesses/:businessId/audits`  | List audits for a business, paginated, newest first                                                                            |
+| `GET /api/business-audits/:id`            | Fetch one — serves both "check status" (`status` field) and "retrieve results" (the same resource, populated once `COMPLETED`) |
+
+List query parameters: `page`, `limit` (same conventions as businesses; sort is fixed to
+`-createdAt`).
+
+**Audit shape** (abbreviated — see
+[DATABASE.md](DATABASE.md#business_audits) for every field):
+
+```json
+{
+  "data": {
+    "id": "cmr...",
+    "businessId": "cmr...",
+    "websiteAnalysisId": "cmr...",
+    "status": "COMPLETED",
+    "promptVersion": "business-audit-v1",
+    "model": "openai/gpt-4o-mini",
+    "summary": "Dated design, no clear CTA, but strong local SEO signals.",
+    "findings": [
+      { "category": "design", "severity": "medium", "description": "No mobile nav menu" }
+    ],
+    "score": 72,
+    "confidence": "high",
+    "reasons": ["Active blog with recent posts", "Missing contact form"],
+    "disqualifiers": [],
+    "totalTokens": 812,
+    "durationMs": 3400,
+    "error": null,
+    "createdAt": "2026-07-04T18:00:00.000Z"
+  }
+}
+```
+
+A successful completion always writes `score` onto the parent `businesses` row, and
+promotes its `status` from `ANALYZED` to `AUDITED` (idempotent — a no-op if the business
+is already past `ANALYZED`, so a re-audit never regresses a business further along the
+pipeline). Malformed model output is retried once (the validation error is appended to
+the conversation); a second failure marks the audit `FAILED` and never persists
+unvalidated output — see [PROMPTS.md](PROMPTS.md).

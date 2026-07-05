@@ -1,5 +1,6 @@
 import type { Prisma, WebsiteAnalysis } from '@prisma/client';
 import { env } from '../../config/env.js';
+import { ConcurrencyLimiter } from '../../lib/concurrency-limiter.js';
 import { NotFoundError, UnprocessableError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import {
@@ -7,7 +8,6 @@ import {
   type BusinessRepository,
 } from '../businesses/businesses.repository.js';
 import { captureWebsite } from './capture.js';
-import { ConcurrencyLimiter } from './concurrency-limiter.js';
 import { buildAnalysisResult } from './result-mapper.js';
 import { saveScreenshot } from './screenshot-storage.js';
 import { NavigationError } from './types.js';

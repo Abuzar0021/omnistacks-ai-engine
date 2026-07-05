@@ -36,7 +36,7 @@ export const businessIdParamSchema = z.object({
   id: z.string().min(1),
 });
 
-const SORTABLE = ['name', 'createdAt', 'updatedAt', 'status'] as const;
+const SORTABLE = ['name', 'createdAt', 'updatedAt', 'status', 'score'] as const;
 const SORT_VALUES = SORTABLE.flatMap((field) => [field, `-${field}`] as const);
 
 export const listBusinessesQuerySchema = z.object({

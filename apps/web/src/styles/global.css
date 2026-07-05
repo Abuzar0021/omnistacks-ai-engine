@@ -568,3 +568,20 @@ textarea.input {
 .link-column a:hover {
   color: var(--accent);
 }
+
+/* --- Business audit --------------------------------------------------------- */
+
+.badge-severity-low {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge-severity-medium {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.badge-severity-high {
+  color: var(--err);
+  border-color: var(--err);
+}
