@@ -118,6 +118,7 @@ defaults. Summary:
 | `WEBHOOK_URL`                                   | n8n, api    | Base URL for n8n webhooks                           | Public HTTPS URL                                                                                       |
 | `N8N_ENCRYPTION_KEY`                            | n8n         | Encrypts stored credentials                         | **Losing it = losing all n8n credentials.** Back it up separately.                                     |
 | `GENERIC_TIMEZONE`                              | n8n         | Cron timezone                                       |                                                                                                        |
+| `N8N_SECURE_COOKIE`                             | n8n         | Requires HTTPS to set n8n's session cookie          | `true`; only set `false` temporarily to access n8n via bare `http://<ip>:5678` before TLS is set up    |
 
 Env vars are validated at startup with Zod (`apps/*/src/config/env.ts`); a misconfigured
 service exits immediately with the offending field names.
