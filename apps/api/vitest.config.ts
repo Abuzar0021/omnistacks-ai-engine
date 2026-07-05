@@ -17,11 +17,12 @@ export default defineConfig({
       SCREENSHOT_STORAGE_DIR: './storage/test-screenshots',
       ANALYSIS_NAVIGATION_TIMEOUT_MS: '3000',
       ANALYSIS_STABLE_TIMEOUT_MS: '500',
-      LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS: '3000',
+      GOOGLE_PLACES_API_KEY: 'test-key',
       // Unreachable by default so tests never hit the real internet; tests that
-      // need real scraping pass an explicit baseUrl to scrapeBusinesses(),
-      // which overrides this (see lead-discovery/scraper.integration.test.ts).
-      YELP_BASE_URL: 'http://127.0.0.1:1',
+      // need a real HTTP round-trip pass an explicit baseUrl to
+      // searchBusinesses(), which overrides this (see
+      // lead-discovery/places-client.integration.test.ts).
+      GOOGLE_PLACES_BASE_URL: 'http://127.0.0.1:1',
     },
     // Real Playwright navigations + polling for async analysis completion.
     testTimeout: 20_000,

@@ -64,7 +64,7 @@ describe('POST /api/lead-discovery', () => {
     });
   });
 
-  it('marks the job FAILED when the directory is unreachable (test default YELP_BASE_URL)', async () => {
+  it('marks the job FAILED when Places API is unreachable (test default GOOGLE_PLACES_BASE_URL)', async () => {
     const started = await request(app)
       .post('/api/lead-discovery')
       .send({ industry: 'Saloons', location: 'Texas' });

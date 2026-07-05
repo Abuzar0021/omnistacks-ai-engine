@@ -14,9 +14,9 @@ import {
   type LeadDiscoveryRepository,
 } from './lead-discovery.repository.js';
 import type { StartDiscoveryInput } from './lead-discovery.schemas.js';
-import { scrapeBusinesses, type ScrapedBusiness } from './scraper.js';
+import { searchBusinesses, type ScrapedBusiness } from './places-client.js';
 
-export type ScrapeFn = typeof scrapeBusinesses;
+export type SearchFn = typeof searchBusinesses;
 
 export interface LeadDiscoveryListResult {
   items: LeadDiscoveryJob[];
@@ -37,7 +37,7 @@ export class LeadDiscoveryService {
   constructor(
     private readonly repo: LeadDiscoveryRepository = leadDiscoveryRepository,
     private readonly businesses: BusinessRepository = businessRepository,
-    private readonly scrape: ScrapeFn = scrapeBusinesses,
+    private readonly search: SearchFn = searchBusinesses,
     limiter: ConcurrencyLimiter = new ConcurrencyLimiter(env.LEAD_DISCOVERY_MAX_CONCURRENCY),
   ) {
     this.limiter = limiter;
@@ -82,7 +82,7 @@ export class LeadDiscoveryService {
     );
 
     try {
-      const scraped = await this.scrape({
+      const scraped = await this.search({
         industry: input.industry,
         location: input.location,
         limit: input.limit,
