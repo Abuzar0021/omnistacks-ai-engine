@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteBusiness, getBusiness, updateBusiness } from '../api/businesses';
 import { ApiError } from '../api/client';
 import { BusinessAuditPanel } from '../components/BusinessAuditPanel';
+import { EmailDraftPanel } from '../components/EmailDraftPanel';
 import { StatusBadge } from '../components/StatusBadge';
 import { WebsiteAnalysisPanel } from '../components/WebsiteAnalysisPanel';
 import { BUSINESS_STATUSES, type Business, type BusinessStatus } from '../types/business';
@@ -259,6 +260,10 @@ export function BusinessDetailPage() {
       <BusinessAuditPanel
         businessId={business.id}
         hasCompletedAnalysis={business.status !== 'NEW'}
+      />
+      <EmailDraftPanel
+        businessId={business.id}
+        hasCompletedAudit={!['NEW', 'ANALYZED'].includes(business.status)}
       />
     </div>
   );

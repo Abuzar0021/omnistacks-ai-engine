@@ -3,6 +3,7 @@ import { BusinessAuditDetailPage } from './pages/BusinessAuditDetailPage';
 import { BusinessDetailPage } from './pages/BusinessDetailPage';
 import { BusinessListPage } from './pages/BusinessListPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { EmailDraftDetailPage } from './pages/EmailDraftDetailPage';
 import { ImportPage } from './pages/ImportPage';
 import { WebsiteAnalysisDetailPage } from './pages/WebsiteAnalysisDetailPage';
 
@@ -42,6 +43,10 @@ export function App() {
           <Route
             path="/businesses/:businessId/audits/:auditId"
             element={<BusinessAuditDetailPage />}
+          />
+          <Route
+            path="/businesses/:businessId/email-drafts/:draftId"
+            element={<EmailDraftDetailPage />}
           />
           <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<p className="text-muted">Page not found.</p>} />

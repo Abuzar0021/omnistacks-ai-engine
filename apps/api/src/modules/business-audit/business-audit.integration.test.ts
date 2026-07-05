@@ -88,6 +88,21 @@ async function waitForTerminalStatus(auditId: string, timeoutMs = 5000) {
   }
 }
 
+/**
+ * The business-score/status side effect happens in a separate await *after*
+ * the audit row is marked COMPLETED, so polling the audit alone can race
+ * ahead of it — poll the business row too rather than assuming it's settled.
+ */
+async function waitForBusinessScore(businessId: string, score: number, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const res = await request(app).get(`/api/businesses/${businessId}`);
+    if (res.body.data.score === score) return res.body.data;
+    if (Date.now() > deadline) return res.body.data;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 describe('POST /api/businesses/:businessId/audits', () => {
   it('returns 404 for an unknown business', async () => {
     const res = await startAudit('does-not-exist');
@@ -136,9 +151,9 @@ describe('full audit pipeline with a mocked model', () => {
     expect(auditResult.totalTokens).toBe(150);
     expect(auditResult.durationMs).toBeGreaterThanOrEqual(0);
 
-    const business = await request(app).get(`/api/businesses/${businessId}`);
-    expect(business.body.data.score).toBe(88);
-    expect(business.body.data.status).toBe('AUDITED');
+    const business = await waitForBusinessScore(businessId, 88);
+    expect(business.score).toBe(88);
+    expect(business.status).toBe('AUDITED');
   });
 
   it('does not advance status when the business is already past ANALYZED', async () => {
@@ -150,9 +165,9 @@ describe('full audit pipeline with a mocked model', () => {
     const started = await startAudit(businessId);
     await waitForTerminalStatus(started.body.data.id);
 
-    const business = await request(app).get(`/api/businesses/${businessId}`);
-    expect(business.body.data.score).toBe(88);
-    expect(business.body.data.status).toBe('CLIENT');
+    const business = await waitForBusinessScore(businessId, 88);
+    expect(business.score).toBe(88);
+    expect(business.status).toBe('CLIENT');
   });
 
   it('retries once on malformed JSON and still completes', async () => {

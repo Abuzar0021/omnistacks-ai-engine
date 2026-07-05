@@ -26,6 +26,12 @@ export class ValidationError extends AppError {
   }
 }
 
+export class UnauthenticatedError extends AppError {
+  constructor(message = 'Missing or invalid credentials') {
+    super(401, 'UNAUTHENTICATED', message);
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(message = 'Resource not found') {
     super(404, 'NOT_FOUND', message);
