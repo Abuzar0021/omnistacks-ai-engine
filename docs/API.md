@@ -302,3 +302,69 @@ is already past `ANALYZED`, so a re-audit never regresses a business further alo
 pipeline). Malformed model output is retried once (the validation error is appended to
 the conversation); a second failure marks the audit `FAILED` and never persists
 unvalidated output — see [PROMPTS.md](PROMPTS.md).
+
+### Email drafts
+
+LLM-generated outreach emails (M4, see [PROMPTS.md](PROMPTS.md) for the
+`email-personalization-v1` prompt) — runs against a business's most recent `COMPLETED`
+audit. Drafts run asynchronously, same `PENDING`/`RUNNING`/`COMPLETED`/`FAILED` convention
+as audits and analyses; `POST` returns immediately with a `PENDING` record. Sending itself
+is a separate, explicit action — drafts are reviewable before anything goes out.
+
+| Endpoint                                        | Description                                                                                                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/businesses/:businessId/email-drafts` | Start a draft; `202` with the `PENDING` record; `404` unknown business; `422` no `COMPLETED` audit yet                                                 |
+| `GET /api/businesses/:businessId/email-drafts`  | List drafts for a business, paginated, newest first                                                                                                    |
+| `GET /api/email-drafts/:id`                     | Fetch one — serves both "check status" and "retrieve results" (the same resource, populated once `COMPLETED`)                                          |
+| `POST /api/email-drafts/:id/send`               | Trigger sending via n8n; `202` with `{ data: <draft>, triggered: boolean }`; `404` unknown draft; `422` draft not `COMPLETED` or business has no email |
+
+List query parameters: `page`, `limit` (same conventions as businesses; sort is fixed to
+`-createdAt`).
+
+**Draft shape** (abbreviated — see [DATABASE.md](DATABASE.md#email_drafts) for every field):
+
+```json
+{
+  "data": {
+    "id": "cmr...",
+    "businessId": "cmr...",
+    "businessAuditId": "cmr...",
+    "status": "COMPLETED",
+    "promptVersion": "email-personalization-v1",
+    "model": "openai/gpt-4o-mini",
+    "subject": "Quick question about your site",
+    "opener": "I noticed your homepage has no contact form.",
+    "factUsed": "No contact form",
+    "body": "Hi there,\n\nI noticed your homepage has no contact form.\n\nWould you be open to a quick call this week to see if it's a fit?\n\nBest,\nThe OmniStacks Team",
+    "totalTokens": 210,
+    "durationMs": 1800,
+    "error": null,
+    "sentAt": null,
+    "createdAt": "2026-07-05T18:00:00.000Z"
+  }
+}
+```
+
+A successful completion promotes the parent business's `status` from `AUDITED` to
+`EMAIL_DRAFTED` (idempotent, same pattern as business audits). `POST .../send` does
+**not** mark the draft sent — it only triggers the n8n `outreach-send` workflow
+(fire-and-forget; a failed trigger is reported via `triggered: false` rather than an
+HTTP error, per [N8N.md](N8N.md)'s unavailable-tolerant design). `sentAt` and the
+`EMAIL_SENT` status transition are only set once n8n calls back — see Webhooks below.
+
+### Webhooks
+
+Callbacks from n8n into the API (see [N8N.md](N8N.md) for the workflows that call these).
+Every route under `/api/webhooks` requires a valid `X-Webhook-Secret` header
+(`401 UNAUTHENTICATED` without one) regardless of the JWT strategy above — once M5 lands,
+these routes will still authenticate via the shared secret rather than a bearer token, by
+design (see [N8N.md](N8N.md)).
+
+| Endpoint                         | Description                                                                                                                                                                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/webhooks/email-sent`  | Body `{ businessId, emailDraftId }`. Sets `EmailDraft.sentAt` (if not already set) and advances the business to `EMAIL_SENT`. `204` on success (including re-delivery); `404` unknown draft/business; `422` if the draft doesn't belong to the given business. |
+| `POST /api/webhooks/email-reply` | Body `{ businessId, classification }` where `classification` is `"replied"` or `"meeting_booked"`. Advances the business to `RESPONDED` or `MEETING_BOOKED` respectively. `204` on success; `404` unknown business.                                            |
+
+Both endpoints are idempotent: re-delivering the same callback (or receiving callbacks out
+of order) never regresses a business or double-applies a transition — see
+`advanceStatus()` in [DATABASE.md](DATABASE.md#email_drafts).

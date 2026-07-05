@@ -2,8 +2,9 @@ import type { Business, BusinessAudit, Prisma, WebsiteAnalysis } from '@prisma/c
 import { env } from '../../config/env.js';
 import { ConcurrencyLimiter } from '../../lib/concurrency-limiter.js';
 import { NotFoundError, UnprocessableError } from '../../lib/errors.js';
+import { callJsonWithRetry, type ChatFn } from '../../lib/llm-json.js';
 import { logger } from '../../lib/logger.js';
-import { chatCompletion, type ChatMessage } from '../../lib/openrouter.js';
+import { chatCompletion } from '../../lib/openrouter.js';
 import {
   businessRepository,
   type BusinessRepository,
@@ -17,14 +18,13 @@ import {
   buildAuditPrompt,
   buildRetryMessage,
   PROMPT_VERSION,
-  type AuditResponse,
 } from './prompt.js';
 import {
   businessAuditRepository,
   type BusinessAuditRepository,
 } from './business-audit.repository.js';
 
-export type ChatFn = typeof chatCompletion;
+export type { ChatFn } from '../../lib/llm-json.js';
 
 export interface BusinessAuditListResult {
   items: BusinessAudit[];
@@ -33,14 +33,6 @@ export interface BusinessAuditListResult {
   total: number;
   totalPages: number;
 }
-
-interface ModelCallResult {
-  result: AuditResponse;
-  model: string;
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-}
-
-const MAX_ATTEMPTS = 2;
 
 export class BusinessAuditService {
   private readonly limiter: ConcurrencyLimiter;
@@ -126,7 +118,13 @@ export class BusinessAuditService {
         analysis,
       });
 
-      const { result, model, usage } = await this.callWithRetry(messages);
+      const { result, model, usage } = await callJsonWithRetry(
+        this.chat,
+        messages,
+        auditResponseSchema,
+        { temperature: 0, maxTokens: 1024 },
+        buildRetryMessage,
+      );
       const finishedAt = new Date();
       const durationMs = finishedAt.getTime() - startedAt.getTime();
 
@@ -163,42 +161,6 @@ export class BusinessAuditService {
       );
       await this.repo.update(auditId, { status: 'FAILED', error: message, finishedAt, durationMs });
     }
-  }
-
-  /** Calls the model, validates the JSON response, and retries once on failure. */
-  private async callWithRetry(initialMessages: ChatMessage[]): Promise<ModelCallResult> {
-    let messages = initialMessages;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const response = await this.chat(messages, { temperature: 0, maxTokens: 1024 });
-      const content = response.choices[0]?.message.content ?? '';
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch (cause) {
-        if (attempt < MAX_ATTEMPTS) {
-          const message = cause instanceof Error ? cause.message : String(cause);
-          messages = [...messages, buildRetryMessage(`Response was not valid JSON: ${message}`)];
-          continue;
-        }
-        throw new Error('Model returned invalid JSON after retry — never stored');
-      }
-
-      const validated = auditResponseSchema.safeParse(parsed);
-      if (!validated.success) {
-        if (attempt < MAX_ATTEMPTS) {
-          messages = [...messages, buildRetryMessage(validated.error.message)];
-          continue;
-        }
-        throw new Error('Model response failed schema validation after retry — never stored');
-      }
-
-      return { result: validated.data, model: response.model, usage: response.usage };
-    }
-
-    // Unreachable: the loop always returns or throws on its final iteration.
-    throw new Error('Model call exhausted retries without a result');
   }
 
   /** Denormalizes the score and advances ANALYZED -> AUDITED (idempotent past ANALYZED). */

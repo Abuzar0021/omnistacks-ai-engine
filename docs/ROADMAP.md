@@ -122,7 +122,7 @@ assert stored JSON validates and statuses transition.
 
 ---
 
-## M4 — Outreach: email drafting, sending & n8n ⬜
+## M4 — Outreach: email drafting, sending & n8n ✅
 
 **Scope:** personalized email drafting via OpenRouter (`AUDITED → EMAIL_DRAFTED`), the
 n8n workflows planned in [N8N.md](N8N.md) for sending (via the operator's own
@@ -132,13 +132,13 @@ Gmail/SMTP account, per the current single-operator deployment — see
 (`RESPONDED`/`MEETING_BOOKED`), webhook auth (shared secret), workflow JSON committed to
 `n8n/workflows/`.
 
-**Completion criteria:**
+**Completion criteria (met):**
 
-- [ ] Drafts are generated, stored, and reviewable before sending
-- [ ] n8n sequence sends via the connected Gmail/SMTP account and reports back status
+- [x] Drafts are generated, stored, and reviewable before sending
+- [x] n8n sequence sends via the connected Gmail/SMTP account and reports back status
       transitions through the API
-- [ ] Webhook endpoints reject requests without the shared secret
-- [ ] All workflows exported and committed with the `NN-short-description.json` convention
+- [x] Webhook endpoints reject requests without the shared secret
+- [x] All workflows exported and committed with the `NN-short-description.json` convention
 
 **Independent test:** fire the webhooks manually with curl against a local n8n; assert
 business status transitions.

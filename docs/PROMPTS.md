@@ -2,8 +2,8 @@
 
 Registry of every AI prompt the system uses. **This file is the source of truth**: prompts
 are designed and reviewed here first, then implemented as constants in
-`apps/api/src/modules/` (starting with `business-audit-v1` in M3) that must match this
-document. A prompt change is a PR that updates both.
+`apps/api/src/modules/` (`business-audit-v1` in M3, `email-personalization-v1` in M4) that
+must match this document. A prompt change is a PR that updates both.
 
 ## Conventions
 
@@ -140,39 +140,47 @@ onto `Business.score` (for list-view sorting) and `Business.status` advances
 
 ## `email-personalization-v1`
 
-> Field names below (`leadFields`, `leadProfile`, `campaignPitch`) predate the
-> Business/BusinessAudit model and the M3→M4 reprioritization; M4 will finalize this
-> prompt against `Business` + `BusinessAudit` fields and the same `BUSINESS_CONTEXT` env
-> var `business-audit-v1` uses. Shape and intent stay the same.
-
-**Purpose:** generate a personalized first-line/hook and subject for outreach, consumed by
-the n8n outreach workflow (M4). The template body of the email is owned by the campaign;
-the LLM only personalizes.
+**Purpose:** given a business and its completed audit, generate a personalized opener and
+subject line for an outreach email. Used by the `EmailDraft` service (M4); runs after a
+`BusinessAudit` reaches `COMPLETED` (`AUDITED → EMAIL_DRAFTED`). Only the opener is
+model-generated — the rest of the email body comes from the operator's own
+`OUTREACH_EMAIL_TEMPLATE` env var (a static template with an `{{opener}}` placeholder),
+assembled in code, never by the model. This keeps the LLM's job narrow (one fact, one
+sentence) and the rest of the email consistent and reviewable.
 
 **Model / params:** default model, temperature `0.7`, max_tokens `512`.
 
-**Inputs:** `leadFields`, `leadProfile` (enrichment output), `campaignPitch` (one-sentence
-value prop from campaign settings), `tone` (`"professional"` | `"casual"`).
+**Inputs:**
+
+- `businessContext` — the same `BUSINESS_CONTEXT` env var `business-audit-v1` uses.
+- `business` — `name`, `industry`, `country`, `city` (same shape as `business-audit-v1`).
+- `audit` — a trimmed subset of the business's latest completed `BusinessAudit`:
+  `summary`, `score`, `reasons`. Deliberately not the full `findings`/`disqualifiers` — a
+  one-line opener doesn't need them.
+- `tone` — fixed `"professional"` for now (no per-campaign tone yet, consistent with the
+  single global `BUSINESS_CONTEXT` — see [ROADMAP.md](ROADMAP.md) M3 note).
 
 **Template (system):**
 
 ```text
-You write concise, specific B2B outreach openers. Use one concrete fact about the lead or
-their company from the provided profile — never generic flattery. No emojis, no
+You write concise, specific B2B outreach openers. Use one concrete fact about the
+prospect or their website from the provided audit — never generic flattery. No emojis, no
 exclamation marks, under 40 words for the opener. Respond with a single JSON object
-matching the schema — no prose.
+matching the schema — no prose, no markdown fences.
 ```
 
 **Template (user):**
 
 ```text
-Lead:
-{{leadFields}}
+About us and our ideal customers:
+{{businessContext}}
 
-Profile:
-{{leadProfile}}
+Prospect:
+{{business}}
 
-Our pitch: {{campaignPitch}}
+Our audit of their site:
+{{audit}}
+
 Tone: {{tone}}
 ```
 
@@ -195,12 +203,24 @@ Tone: {{tone}}
 }
 ```
 
+Stored on `EmailDraft`: `subject`, `opener`, `factUsed` map directly to columns of the
+same name (see [DATABASE.md](DATABASE.md#email_drafts)). `body` is **not** part of the
+model's response — it's assembled by substituting `{{opener}}` and `{{senderName}}`
+(from `OUTREACH_SENDER_NAME`) into `OUTREACH_EMAIL_TEMPLATE` before being stored, so the
+persisted `body` is always the exact text a "Send" action will hand to n8n (see
+[N8N.md](N8N.md)). On completion, `Business.status` advances `AUDITED → EMAIL_DRAFTED`.
+
 ---
 
 ## `scrape-query-expansion-v1`
 
+> Belongs to the scaffold-era `Campaign`/`Lead`/`scrape_jobs` scraping flow, which is
+> superseded by `Business` as the operative entity (see [DATABASE.md](DATABASE.md) and
+> [ROADMAP.md](ROADMAP.md)). Undecided — repurpose or remove — pending the M7 campaign
+> redesign; not implemented by M3 or M4, both of which operate on `Business` directly.
+
 **Purpose:** expand a campaign's ICP description into concrete search queries/target lists
-for the `SCRAPE` job planner (M4). Keeps scraping targeted instead of crawling broadly.
+for the `SCRAPE` job planner. Keeps scraping targeted instead of crawling broadly.
 
 **Model / params:** default model, temperature `0.3`, max_tokens `512`.
 

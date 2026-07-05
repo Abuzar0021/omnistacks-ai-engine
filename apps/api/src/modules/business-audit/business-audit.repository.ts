@@ -19,6 +19,14 @@ export class BusinessAuditRepository {
     return this.db.businessAudit.findUnique({ where: { id } });
   }
 
+  /** Most recent successfully completed audit for a business, if any. */
+  findLatestCompleted(businessId: string): Promise<BusinessAudit | null> {
+    return this.db.businessAudit.findFirst({
+      where: { businessId, status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async listByBusiness(
     params: BusinessAuditListParams,
   ): Promise<{ items: BusinessAudit[]; total: number }> {

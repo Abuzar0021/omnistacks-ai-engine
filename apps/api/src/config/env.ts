@@ -24,6 +24,20 @@ const envSchema = z.object({
     ),
   AUDIT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
 
+  // Outreach (docs/PROMPTS.md "email-personalization-v1", docs/N8N.md)
+  OUTREACH_SENDER_NAME: z.string().default('The OmniStacks Team'),
+  OUTREACH_EMAIL_TEMPLATE: z
+    .string()
+    .default(
+      "Hi there,\n\n{{opener}}\n\nWould you be open to a quick call this week to see if it's a fit?\n\nBest,\n{{senderName}}",
+    ),
+  EMAIL_DRAFT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  // Internal Docker-network URL the API calls to trigger n8n workflows — distinct
+  // from n8n's own public-facing WEBHOOK_URL (see docs/N8N.md).
+  N8N_API_BASE_URL: z.string().url().default('http://localhost:5678'),
+  // Shared secret for webhook auth, both directions (X-Webhook-Secret header).
+  N8N_WEBHOOK_SECRET: z.string().default('change-me'),
+
   // Website analyzer (Playwright-driven data collection)
   PLAYWRIGHT_HEADLESS: z
     .string()

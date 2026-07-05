@@ -73,7 +73,7 @@ row every pipeline stage (analysis, audit, outreach) operates on.
 reachable from any stage).
 
 Relations: many-to-many with `tags` (implicit Prisma join table `_BusinessToTag`); has
-many `website_analyses` and `business_audits`.
+many `website_analyses`, `business_audits`, and `email_drafts`.
 Indexes: `(status)`, `(industry)`, `(country)`, `(name)`, `(email)`, `(createdAt)`,
 `(score)` — these back the list view's filters, search, and default/score sort.
 
@@ -209,6 +209,61 @@ may later need a `retryCount` or a `SKIPPED` state that doesn't apply to analyse
 `AUDITED` (only if it is still exactly `ANALYZED` — idempotent past that point, so a
 business already at `EMAIL_DRAFTED` or later is never regressed by a re-audit).
 
+### `email_drafts`
+
+One LLM-generated outreach email (M4) for a business, drafted from its most recent
+`COMPLETED` `business_audits` row via OpenRouter. Sending and reply handling are owned by
+n8n, not this table — see [N8N.md](N8N.md) and [API.md](API.md#webhooks).
+
+| Column             | Type               | Notes                                                                                                             |
+| ------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `id`               | `String`           | PK, cuid                                                                                                          |
+| `businessId`       | `String`           | FK → `businesses.id`, **onDelete: Cascade**                                                                       |
+| `businessAuditId`  | `String`           | FK → `business_audits.id`, **onDelete: Cascade**                                                                  |
+| `status`           | `EmailDraftStatus` | `PENDING` (default) → `RUNNING` → `COMPLETED` \| `FAILED`                                                         |
+| `promptVersion`    | `String`           | Default `"email-personalization-v1"` — see [PROMPTS.md](PROMPTS.md)                                               |
+| `model`            | `String?`          | OpenRouter model id that produced the result                                                                      |
+| `subject`          | `String?`          | Model-generated subject line                                                                                      |
+| `opener`           | `String?`          | Model-generated personalized opener                                                                               |
+| `factUsed`         | `String?`          | The concrete fact the model cited, for QA/review                                                                  |
+| `body`             | `String?`          | Final assembled email — `OUTREACH_EMAIL_TEMPLATE` with `opener` substituted in; never model-generated directly    |
+| `promptTokens`     | `Int?`             |                                                                                                                   |
+| `completionTokens` | `Int?`             |                                                                                                                   |
+| `totalTokens`      | `Int?`             |                                                                                                                   |
+| `durationMs`       | `Int?`             | Wall-clock time from `RUNNING` to terminal status                                                                 |
+| `error`            | `String?`          | Populated on `FAILED`                                                                                             |
+| `startedAt`        | `DateTime?`        |                                                                                                                   |
+| `finishedAt`       | `DateTime?`        |                                                                                                                   |
+| `sentAt`           | `DateTime?`        | Set by the `email-sent` webhook callback once n8n confirms delivery — **not** set when "Send" is merely triggered |
+| `createdAt`        | `DateTime`         |                                                                                                                   |
+| `updatedAt`        | `DateTime`         |                                                                                                                   |
+
+Indexes: `(businessId)`, `(status)`, `(createdAt)` — same rationale as `business_audits`.
+
+Cascade rationale: a draft has no meaning outside the business (or the specific audit) it
+was generated from — same rationale as `business_audits` → `businesses`.
+
+**Why `sentAt` lives here instead of only advancing `businesses.status`:** a business can
+in principle have multiple drafts (e.g. a redraft after edits); `sentAt` records which
+specific draft was actually sent, independent of the coarser pipeline status.
+
+**Side effect on `businesses`:** on `COMPLETED`, promotes `businesses.status` from
+`AUDITED` to `EMAIL_DRAFTED` (only if still exactly `AUDITED`, same idempotent pattern as
+`business_audits`). The `email-sent` and `email-reply` webhook callbacks (not this table
+directly) later advance `businesses.status` to `EMAIL_SENT`, `RESPONDED`, or
+`MEETING_BOOKED` — via `advanceStatus()` (see below), not the simple equality check the
+two audit-pipeline promotions above use, because reply classification can jump directly to
+`MEETING_BOOKED` and callbacks can arrive out of order.
+
+**Why a monotonic `advanceStatus()` helper instead of the simple "if status is exactly X"
+check `business_audits`/`website_analyses` use:** those two only ever have one possible
+predecessor status, so an equality check is sufficient. Webhook-driven transitions don't
+have that guarantee — n8n callbacks can be delivered out of order or retried, and a reply
+can request a meeting directly without an intermediate "replied" callback. A monotonic
+"only move forward in `PIPELINE_ORDER`, `ARCHIVED` excluded" helper
+(`apps/api/src/modules/businesses/status-pipeline.ts`) is idempotent and safe regardless of
+delivery order, without special-casing every possible prior state.
+
 ### `campaigns`
 
 A lead generation campaign owned by a user.
@@ -284,7 +339,9 @@ erDiagram
     businesses }o--o{ tags : labelled
     businesses ||--o{ website_analyses : "analyzed by"
     businesses ||--o{ business_audits : "audited by"
+    businesses ||--o{ email_drafts : "drafted for"
     website_analyses ||--o{ business_audits : "audited from"
+    business_audits ||--o{ email_drafts : "drafted from"
     users ||--o{ campaigns : owns
     campaigns ||--o{ leads : contains
     campaigns |o--o{ scrape_jobs : "tracked by"
@@ -307,7 +364,7 @@ erDiagram
   first one (`20260703091443_init_lead_management`) creates the full schema above;
   `20260703174233_add_website_analysis` adds the `website_analyses` table;
   `20260704173451_add_business_audit` adds the `business_audits` table and
-  `businesses.score`.
+  `businesses.score`; `20260705043540_add_email_draft` adds the `email_drafts` table.
 - **Create (dev):** `./scripts/db-migrate.sh <name>` (wraps `prisma migrate dev`) against
   the local Compose Postgres. Commit the generated SQL with the schema change.
 - **Tests:** the Vitest global setup applies migrations to the test database
