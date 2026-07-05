@@ -17,8 +17,15 @@ export type EmailResponse = z.infer<typeof emailResponseSchema>;
 
 const SYSTEM_PROMPT = `You write concise, specific B2B outreach openers. Use one concrete fact about the
 prospect or their website from the provided audit — never generic flattery. No emojis, no
-exclamation marks, under 40 words for the opener. Respond with a single JSON object
-matching the schema — no prose, no markdown fences.`;
+exclamation marks, under 40 words for the opener.
+
+Respond with a single JSON object matching exactly this schema — no prose, no markdown
+fences, no extra keys, no renamed keys:
+{
+  "subject": string (max 80 chars),
+  "opener": string (max 300 chars),
+  "factUsed": string (optional, max 200 chars) — the concrete fact referenced, for QA/review
+}`;
 
 export interface BusinessSummary {
   name: string;
