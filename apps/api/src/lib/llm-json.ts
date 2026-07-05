@@ -47,12 +47,12 @@ export async function callJsonWithRetry<T>(
     try {
       parsed = JSON.parse(stripJsonFence(content));
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
       if (attempt < MAX_ATTEMPTS) {
-        const message = cause instanceof Error ? cause.message : String(cause);
         messages = [...messages, buildRetryMessage(`Response was not valid JSON: ${message}`)];
         continue;
       }
-      throw new Error('Model returned invalid JSON after retry — never stored');
+      throw new Error(`Model returned invalid JSON after retry — never stored: ${message}`);
     }
 
     const validated = schema.safeParse(parsed);
@@ -61,7 +61,9 @@ export async function callJsonWithRetry<T>(
         messages = [...messages, buildRetryMessage(validated.error.message)];
         continue;
       }
-      throw new Error('Model response failed schema validation after retry — never stored');
+      throw new Error(
+        `Model response failed schema validation after retry — never stored: ${validated.error.message}`,
+      );
     }
 
     return { result: validated.data, model: response.model, usage: response.usage };
