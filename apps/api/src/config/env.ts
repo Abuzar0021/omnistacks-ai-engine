@@ -48,6 +48,11 @@ const envSchema = z.object({
   ANALYSIS_NAVIGATION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   ANALYSIS_STABLE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   SCREENSHOT_STORAGE_DIR: z.string().default('./storage/screenshots'),
+
+  // Lead discovery (Playwright-driven directory search, docs/ARCHITECTURE.md)
+  YELP_BASE_URL: z.string().url().default('https://www.yelp.com'),
+  LEAD_DISCOVERY_MAX_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
 });
 
 const parsed = envSchema.safeParse(process.env);

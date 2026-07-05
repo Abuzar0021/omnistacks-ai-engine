@@ -5,6 +5,7 @@ import { BusinessListPage } from './pages/BusinessListPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EmailDraftDetailPage } from './pages/EmailDraftDetailPage';
 import { ImportPage } from './pages/ImportPage';
+import { LeadDiscoveryPage } from './pages/LeadDiscoveryPage';
 import { WebsiteAnalysisDetailPage } from './pages/WebsiteAnalysisDetailPage';
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -28,6 +29,9 @@ export function App() {
           <NavLink to="/import" className={navClass}>
             Import CSV
           </NavLink>
+          <NavLink to="/discover" className={navClass}>
+            Find leads
+          </NavLink>
         </nav>
       </aside>
 
@@ -49,6 +53,7 @@ export function App() {
             element={<EmailDraftDetailPage />}
           />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/discover" element={<LeadDiscoveryPage />} />
           <Route path="*" element={<p className="text-muted">Page not found.</p>} />
         </Routes>
       </main>
