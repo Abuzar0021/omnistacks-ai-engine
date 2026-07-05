@@ -371,12 +371,13 @@ of order) never regresses a business or double-applies a transition — see
 
 ### Lead discovery
 
-Playwright-driven directory search (M9) — given an industry and location, scrapes Yelp
-for matching businesses and bulk-creates the new ones (deduped by domain) with
+Google Places API search (M9) — given an industry and location, searches Places for
+matching businesses and bulk-creates the new ones (deduped by domain) with
 `status=NEW`. Runs asynchronously, same `PENDING`/`RUNNING`/`COMPLETED`/`FAILED`
 convention as analyses/audits/drafts; `POST` returns immediately with a `PENDING` job.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for why scraping was chosen over an official API,
-and for the fragility/ToS tradeoff that comes with it.
+Requires `GOOGLE_PLACES_API_KEY` (see [DEPLOYMENT.md](DEPLOYMENT.md)) — see
+[ARCHITECTURE.md](ARCHITECTURE.md) for why this replaced an earlier Yelp-scraping
+approach that got reliably blocked in production.
 
 | Endpoint                      | Description                                                                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -408,7 +409,6 @@ List query parameters: `page`, `limit` (same conventions as businesses; sort is 
 }
 ```
 
-A business whose detail page fails to load is skipped (logged) rather than failing the
-whole search. Businesses created here are ordinary `status=NEW` rows — nothing
-downstream (analyze/audit/draft/send) treats them differently from a manually-added or
+Businesses created here are ordinary `status=NEW` rows — nothing downstream
+(analyze/audit/draft/send) treats them differently from a manually-added or
 CSV-imported business.
