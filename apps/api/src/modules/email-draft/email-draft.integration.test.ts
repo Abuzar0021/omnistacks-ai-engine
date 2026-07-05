@@ -197,7 +197,9 @@ describe('POST /api/email-drafts/:id/send', () => {
   it('returns 422 when the draft is not completed', async () => {
     const businessId = await createBusiness();
     await seedCompletedAudit(businessId);
-    chatCompletion.mockResolvedValue(chatResult(JSON.stringify(VALID_RESPONSE)));
+    // Never resolves, so the draft deterministically stays PENDING rather than
+    // racing the background job to COMPLETED before the request below runs.
+    chatCompletion.mockReturnValue(new Promise(() => {}));
     const started = await startDraft(businessId);
 
     const res = await request(app).post(`/api/email-drafts/${started.body.data.id}/send`);
