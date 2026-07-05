@@ -11,11 +11,16 @@ Apps run on the host (fast reload); infrastructure runs in Docker.
 # One-time: install deps, create .env from the template, generate the Prisma client
 ./scripts/setup.sh
 
-# Edit .env — at minimum JWT_SECRET, N8N_ENCRYPTION_KEY, OPENROUTER_API_KEY
+# Edit .env — at minimum JWT_SECRET, N8N_ENCRYPTION_KEY, OPENROUTER_API_KEY,
+# N8N_WEBHOOK_SECRET (must match on both the api and n8n side)
 
 # Start Postgres + n8n in Docker, apply migrations, run api+web+worker in watch mode
 ./scripts/dev.sh
 ```
+
+To actually send outreach (M4), also import `n8n/workflows/01-outreach-send.json` and
+`02-reply-handler.json` into n8n and attach your own SMTP/Gmail credential — see
+[`n8n/README.md`](../n8n/README.md) for the exact steps.
 
 | Service  | URL                       | Notes                           |
 | -------- | ------------------------- | ------------------------------- |
