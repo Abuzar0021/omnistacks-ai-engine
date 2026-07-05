@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import type { Page } from 'playwright';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { launchBrowser } from './browser.js';
@@ -82,6 +83,23 @@ export function parseOutboundWebsite(href: string | null, baseUrl: string): stri
 }
 
 /**
+ * Yelp's search results render client-side after the initial HTML loads, so
+ * `domcontentloaded` alone can fire before any `/biz/...` links exist yet.
+ * Waits for either the results to actually appear or the network to settle,
+ * whichever comes first; never throws — a genuine zero-result page (or a
+ * bot-detection page that never renders results) should complete as "found
+ * nothing", not fail the job.
+ */
+async function waitForPageToSettle(page: Page): Promise<void> {
+  await Promise.race([
+    page.waitForSelector('a[href^="/biz/"]', {
+      timeout: env.LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS,
+    }),
+    page.waitForLoadState('networkidle', { timeout: env.LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS }),
+  ]).catch(() => {});
+}
+
+/**
  * Scrapes a Yelp-style directory for businesses matching an industry +
  * location query: loads the search results page, then visits each result's
  * detail page for its website/phone/city. Scraping Yelp directly is
@@ -97,7 +115,11 @@ export async function scrapeBusinesses(options: ScrapeOptions): Promise<ScrapedB
 
   try {
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (compatible; OmniStacksLeadDiscovery/1.0; +https://omnistacks.ai)',
+      // A realistic desktop-browser UA — identifying as a bot gets directory
+      // sites to block the request or serve a page with no results, which
+      // looks identical to a genuine zero-result search.
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     });
     const page = await context.newPage();
 
@@ -106,7 +128,15 @@ export async function scrapeBusinesses(options: ScrapeOptions): Promise<ScrapedB
       waitUntil: 'domcontentloaded',
       timeout: env.LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS,
     });
+    await waitForPageToSettle(page);
     const results = (await page.evaluate(extractSearchResults)).slice(0, options.limit);
+
+    if (results.length === 0) {
+      logger.warn(
+        { industry: options.industry, location: options.location, pageTitle: await page.title() },
+        'lead discovery: search page had no matching links — directory markup may have changed, or the request may have been blocked as a bot',
+      );
+    }
 
     const businesses: ScrapedBusiness[] = [];
     for (const result of results) {
@@ -115,6 +145,7 @@ export async function scrapeBusinesses(options: ScrapeOptions): Promise<ScrapedB
           waitUntil: 'domcontentloaded',
           timeout: env.LEAD_DISCOVERY_NAVIGATION_TIMEOUT_MS,
         });
+        await waitForPageToSettle(page);
         const raw = await page.evaluate(extractRawDetailFields);
         businesses.push({
           name: result.name,
