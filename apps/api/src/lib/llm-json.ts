@@ -12,6 +12,18 @@ export interface JsonCallResult<T> {
 const MAX_ATTEMPTS = 2;
 
 /**
+ * Some models wrap their JSON response in a markdown code fence despite being
+ * told not to (observed in production via OpenRouter). Strip a fence that
+ * wraps the entire response before parsing, so a well-formed-but-fenced
+ * response isn't treated as invalid JSON.
+ */
+function stripJsonFence(content: string): string {
+  const trimmed = content.trim();
+  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? (match[1] ?? '') : trimmed;
+}
+
+/**
  * Calls the model, validates the JSON response against `schema`, and retries once
  * (with the validation error appended to the conversation via `buildRetryMessage`)
  * before throwing. Never returns unvalidated output — callers must not fall back
@@ -33,7 +45,7 @@ export async function callJsonWithRetry<T>(
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(stripJsonFence(content));
     } catch (cause) {
       if (attempt < MAX_ATTEMPTS) {
         const message = cause instanceof Error ? cause.message : String(cause);

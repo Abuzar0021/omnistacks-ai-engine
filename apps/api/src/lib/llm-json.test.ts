@@ -36,6 +36,23 @@ describe('callJsonWithRetry', () => {
     expect(result.usage?.total_tokens).toBe(15);
   });
 
+  it('accepts a response wrapped in a markdown code fence', async () => {
+    const chat = vi
+      .fn()
+      .mockResolvedValue(chatResult('```json\n' + JSON.stringify({ value: 42 }) + '\n```'));
+
+    const result = await callJsonWithRetry(
+      chat,
+      [{ role: 'user', content: 'go' }],
+      schema,
+      { temperature: 0 },
+      buildRetryMessage,
+    );
+
+    expect(chat).toHaveBeenCalledTimes(1);
+    expect(result.result).toEqual({ value: 42 });
+  });
+
   it('retries once on malformed JSON and succeeds on the second attempt', async () => {
     const chat = vi
       .fn()
