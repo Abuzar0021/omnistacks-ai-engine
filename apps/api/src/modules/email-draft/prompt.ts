@@ -19,8 +19,9 @@ const SYSTEM_PROMPT = `You write concise, specific B2B outreach openers. Use one
 prospect or their website from the provided audit — never generic flattery. No emojis, no
 exclamation marks, under 40 words for the opener.
 
-Respond with a single JSON object matching exactly this schema — no prose, no markdown
-fences, no extra keys, no renamed keys:
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be \`{\`.
 {
   "subject": string (max 80 chars),
   "opener": string (max 300 chars),
@@ -80,7 +81,7 @@ Tone: ${params.tone}`;
 export function buildRetryMessage(validationError: string): ChatMessage {
   return {
     role: 'user',
-    content: `Your previous response did not match the required schema: ${validationError}\nRespond again with ONLY a single valid JSON object matching the schema — no prose, no markdown fences.`,
+    content: `Your previous response did not match the required schema: ${validationError}\nRespond again with ONLY a single valid JSON object matching the schema — no prose, no markdown fences, no reasoning before or after it. The first character must be \`{\`.`,
   };
 }
 

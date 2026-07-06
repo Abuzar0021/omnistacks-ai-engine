@@ -65,8 +65,9 @@ customers, and structured data collected from a prospect's website, assess how w
 fit and what opportunity exists to help them. Every finding must cite something present in
 the provided data — do not invent facts.
 
-Respond with a single JSON object matching exactly this schema — no prose, no markdown
-fences, no extra keys, no renamed keys:
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be `{`.
 {
   "summary": string (max 500 chars),
   "findings": [{ "category": "seo" | "performance" | "design" | "content" | "technology" | "contact" | "trust" | "other", "severity": "low" | "medium" | "high", "description": string (max 300 chars) }],
@@ -76,6 +77,11 @@ fences, no extra keys, no renamed keys:
   "disqualifiers": string[] (optional, each max 200 chars) — hard blockers if any (wrong geography, competitor, already a client, ...)
 }
 ```
+
+Some models (notably free-tier "reasoning" models) preface their output with a chain-of-thought
+preamble despite this instruction (observed in production: a response starting `We need to...`
+before the JSON object). `callJsonWithRetry` recovers the JSON object from surrounding text as a
+defense-in-depth measure, but the prompt still asks for JSON-only output first.
 
 The response schema is embedded directly in this system prompt (not left implicit) —
 earlier revisions said only "matching the schema" without stating it, which left the model
@@ -182,8 +188,9 @@ You write concise, specific B2B outreach openers. Use one concrete fact about th
 prospect or their website from the provided audit — never generic flattery. No emojis, no
 exclamation marks, under 40 words for the opener.
 
-Respond with a single JSON object matching exactly this schema — no prose, no markdown
-fences, no extra keys, no renamed keys:
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be `{`.
 {
   "subject": string (max 80 chars),
   "opener": string (max 300 chars),

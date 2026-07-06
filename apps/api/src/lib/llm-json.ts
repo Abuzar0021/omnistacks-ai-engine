@@ -12,15 +12,21 @@ export interface JsonCallResult<T> {
 const MAX_ATTEMPTS = 2;
 
 /**
- * Some models wrap their JSON response in a markdown code fence despite being
- * told not to (observed in production via OpenRouter). Strip a fence that
- * wraps the entire response before parsing, so a well-formed-but-fenced
- * response isn't treated as invalid JSON.
+ * Some models wrap their JSON response in a markdown code fence, or precede it
+ * with reasoning/prose, despite being told to respond with only JSON (observed
+ * in production via OpenRouter: both a fenced response and a "thinking" model
+ * that led with "We need to..." before its JSON object). Recovers the JSON
+ * object from either case before parsing.
  */
-function stripJsonFence(content: string): string {
+function extractJsonPayload(content: string): string {
   const trimmed = content.trim();
-  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return match ? (match[1] ?? '') : trimmed;
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const unfenced = fenced ? (fenced[1] ?? '') : trimmed;
+  if (unfenced.startsWith('{')) return unfenced;
+
+  const start = unfenced.indexOf('{');
+  const end = unfenced.lastIndexOf('}');
+  return start !== -1 && end > start ? unfenced.slice(start, end + 1) : unfenced;
 }
 
 /**
@@ -45,7 +51,7 @@ export async function callJsonWithRetry<T>(
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(stripJsonFence(content));
+      parsed = JSON.parse(extractJsonPayload(content));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       if (attempt < MAX_ATTEMPTS) {
