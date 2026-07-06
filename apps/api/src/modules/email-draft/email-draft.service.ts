@@ -147,7 +147,7 @@ export class EmailDraftService {
         this.chat,
         messages,
         emailResponseSchema,
-        { temperature: 0.7, maxTokens: 512 },
+        { temperature: 0.7, maxTokens: 2048 },
         buildRetryMessage,
       );
       const finishedAt = new Date();

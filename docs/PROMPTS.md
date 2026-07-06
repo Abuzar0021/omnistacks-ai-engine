@@ -43,7 +43,9 @@ opportunity exists) plus a 0–100 fit score against the operator's own business
 description. Used by the `BusinessAudit` service (M3); runs after a `WebsiteAnalysis`
 reaches `COMPLETED` (`ANALYZED → AUDITED`).
 
-**Model / params:** default model, temperature `0`, max_tokens `1024`.
+**Model / params:** default model, temperature `0`, max_tokens `4096` (kept well above the
+response schema's own size — "thinking"-style models spend part of the budget on
+chain-of-thought before the JSON and get cut off mid-response if it's too tight).
 
 **Inputs:**
 
@@ -169,7 +171,8 @@ model-generated — the rest of the email body comes from the operator's own
 assembled in code, never by the model. This keeps the LLM's job narrow (one fact, one
 sentence) and the rest of the email consistent and reviewable.
 
-**Model / params:** default model, temperature `0.7`, max_tokens `512`.
+**Model / params:** default model, temperature `0.7`, max_tokens `2048` (same reasoning-model
+headroom rationale as `business-audit-v1`).
 
 **Inputs:**
 
