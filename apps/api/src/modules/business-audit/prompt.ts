@@ -42,8 +42,9 @@ customers, and structured data collected from a prospect's website, assess how w
 fit and what opportunity exists to help them. Every finding must cite something present in
 the provided data — do not invent facts.
 
-Respond with a single JSON object matching exactly this schema — no prose, no markdown
-fences, no extra keys, no renamed keys:
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be \`{\`.
 {
   "summary": string (max 500 chars),
   "findings": [{ "category": "seo" | "performance" | "design" | "content" | "technology" | "contact" | "trust" | "other", "severity": "low" | "medium" | "high", "description": string (max 300 chars) }],
@@ -123,6 +124,6 @@ ${JSON.stringify(summary)}`;
 export function buildRetryMessage(validationError: string): ChatMessage {
   return {
     role: 'user',
-    content: `Your previous response did not match the required schema: ${validationError}\nRespond again with ONLY a single valid JSON object matching the schema — no prose, no markdown fences.`,
+    content: `Your previous response did not match the required schema: ${validationError}\nRespond again with ONLY a single valid JSON object matching the schema — no prose, no markdown fences, no reasoning before or after it. The first character must be \`{\`.`,
   };
 }
