@@ -117,6 +117,14 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      # n8n refuses to set its session cookie over plain HTTP by default —
+      # fine once a TLS reverse proxy is in front (leave this true), but it
+      # blocks logging in at all when accessed via bare http://<ip>:5678
+      # pre-HTTPS. Set to 'false' as a temporary measure until a domain +
+      # reverse proxy are set up (see docs/DEPLOYMENT.md) — the session
+      # cookie then travels in plaintext, so don't leave this off in
+      # production.
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-true}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me}
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
       # Exposed to workflow expressions as $env.* — see n8n/workflows/*.json
