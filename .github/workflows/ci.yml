@@ -11,8 +11,30 @@ concurrency:
 
 jobs:
   quality:
-    name: Typecheck & build
+    name: Typecheck, test & build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: omnistacks
+          POSTGRES_PASSWORD: omnistacks
+          POSTGRES_DB: omnistacks_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omnistacks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Only one database is stood up in CI; DATABASE_URL is needed by the
+      # bare `prisma validate`/`prisma generate` steps below (they don't
+      # connect, but the CLI requires the env var to resolve). The test step
+      # itself is unaffected — vitest.config.ts's globalSetup explicitly
+      # passes TEST_DATABASE_URL through as DATABASE_URL for that run.
+      DATABASE_URL: postgresql://omnistacks:omnistacks@localhost:5432/omnistacks_test
+      TEST_DATABASE_URL: postgresql://omnistacks:omnistacks@localhost:5432/omnistacks_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +48,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/api
+
       - name: Validate Prisma schema
         run: npx prisma validate --schema apps/api/prisma/schema.prisma
 
@@ -37,6 +63,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

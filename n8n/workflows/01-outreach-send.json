@@ -1,0 +1,118 @@
+{
+  "name": "01 - Outreach send",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "outreach-send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook: outreach-send",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.headers['x-webhook-secret']}}",
+              "rightValue": "={{$env.N8N_WEBHOOK_SECRET}}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "IF: valid secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-160, 0]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.OUTREACH_FROM_EMAIL}}",
+        "toEmail": "={{$json.body.to}}",
+        "subject": "={{$json.body.subject}}",
+        "text": "={{$json.body.body}}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Send email (SMTP)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [100, -100],
+      "credentials": {
+        "smtp": { "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID", "name": "Operator Gmail/SMTP" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.API_BASE_URL}}/webhooks/email-sent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "X-Webhook-Secret", "value": "={{$env.N8N_WEBHOOK_SECRET}}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"businessId\": $('Webhook: outreach-send').item.json.body.businessId, \"emailDraftId\": $('Webhook: outreach-send').item.json.body.emailDraftId } }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Callback: email-sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [340, -100]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { \"ok\": true } }}", "options": {} },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [580, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"invalid webhook secret\" } }}",
+        "options": { "responseCode": 401 }
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [100, 120]
+    }
+  ],
+  "connections": {
+    "Webhook: outreach-send": {
+      "main": [[{ "node": "IF: valid secret", "type": "main", "index": 0 }]]
+    },
+    "IF: valid secret": {
+      "main": [
+        [{ "node": "Send email (SMTP)", "type": "main", "index": 0 }],
+        [{ "node": "Respond 401", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send email (SMTP)": {
+      "main": [[{ "node": "Callback: email-sent", "type": "main", "index": 0 }]]
+    },
+    "Callback: email-sent": {
+      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "01-outreach-send",
+  "tags": ["omnistacks", "outreach"]
+}

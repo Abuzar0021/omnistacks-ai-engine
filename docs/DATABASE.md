@@ -44,7 +44,225 @@ Platform users.
 
 Relations: has many `campaigns` (as owner).
 
-> Auth milestone (M1) will add credential columns (e.g. `passwordHash`) via migration.
+> Auth milestone (M5) will add credential columns (e.g. `passwordHash`) via migration.
+
+### `businesses`
+
+A prospect business — the operative entity of the lead management module (M1) and the
+row every pipeline stage (analysis, audit, outreach) operates on.
+
+| Column      | Type             | Notes                                                                    |
+| ----------- | ---------------- | ------------------------------------------------------------------------ |
+| `id`        | `String`         | PK, cuid                                                                 |
+| `name`      | `String`         | Required                                                                 |
+| `website`   | `String?`        | Raw URL exactly as entered/imported                                      |
+| `domain`    | `String?`        | **Unique** — normalized from `website` (see below)                       |
+| `email`     | `String?`        | Validated on write                                                       |
+| `phone`     | `String?`        |                                                                          |
+| `industry`  | `String?`        |                                                                          |
+| `country`   | `String?`        |                                                                          |
+| `city`      | `String?`        |                                                                          |
+| `status`    | `BusinessStatus` | Pipeline stage, `NEW` default (full list below)                          |
+| `notes`     | `String?`        | Free text                                                                |
+| `score`     | `Int?`           | 0–100, denormalized from the latest completed `business_audits` row (M3) |
+| `createdAt` | `DateTime`       |                                                                          |
+| `updatedAt` | `DateTime`       |                                                                          |
+
+`BusinessStatus` (pipeline order): `NEW` → `ANALYZED` → `AUDITED` → `EMAIL_DRAFTED` →
+`EMAIL_SENT` → `RESPONDED` → `MEETING_BOOKED` → `CLIENT`, plus `ARCHIVED` (terminal,
+reachable from any stage).
+
+Relations: many-to-many with `tags` (implicit Prisma join table `_BusinessToTag`); has
+many `website_analyses`, `business_audits`, and `email_drafts`.
+Indexes: `(status)`, `(industry)`, `(country)`, `(name)`, `(email)`, `(createdAt)`,
+`(score)` — these back the list view's filters, search, and default/score sort.
+
+**Domain normalization** (implemented in
+`apps/api/src/modules/businesses/domain.ts`): lowercase the hostname, strip protocol,
+credentials, port, path/query/fragment, and a leading `www.`; unicode hostnames become
+punycode. `https://www.Acme.com/about` → `acme.com`. The unique constraint on the
+normalized `domain` is the duplicate-prevention mechanism for both API writes (`409
+CONFLICT`) and CSV imports (rows reported as duplicates). Businesses without a website
+have `domain = NULL`, which Postgres exempts from uniqueness.
+
+### `tags`
+
+Free-form labels attachable to any business (`hot`, `q3-batch`, ...).
+
+| Column      | Type       | Notes      |
+| ----------- | ---------- | ---------- |
+| `id`        | `String`   | PK, cuid   |
+| `name`      | `String`   | **Unique** |
+| `createdAt` | `DateTime` |            |
+
+Relations: many-to-many with `businesses`. Tags are created on demand
+(`connectOrCreate`) when referenced by name through the API.
+
+### `website_analyses`
+
+One run of the website analyzer (M2) against a business's website — data collection
+only, no AI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the module's scope boundary.
+
+| Column               | Type                    | Notes                                                               |
+| -------------------- | ----------------------- | ------------------------------------------------------------------- |
+| `id`                 | `String`                | PK, cuid                                                            |
+| `businessId`         | `String`                | FK → `businesses.id`, **onDelete: Cascade**                         |
+| `status`             | `WebsiteAnalysisStatus` | `PENDING` (default) → `RUNNING` → `COMPLETED` \| `FAILED`           |
+| `requestedUrl`       | `String`                | `business.website` at the time the analysis was started             |
+| `finalUrl`           | `String?`               | URL after following redirects                                       |
+| `statusCode`         | `Int?`                  | HTTP status of the final response                                   |
+| `redirectCount`      | `Int?`                  |                                                                     |
+| `title`              | `String?`               |                                                                     |
+| `metaDescription`    | `String?`               |                                                                     |
+| `canonicalUrl`       | `String?`               |                                                                     |
+| `language`           | `String?`               | `<html lang>`                                                       |
+| `faviconUrl`         | `String?`               |                                                                     |
+| `headings`           | `Json?`                 | `{ h1: string[], ..., h6: string[] }`                               |
+| `openGraph`          | `Json?`                 | Open Graph meta tags, key → content                                 |
+| `twitterCard`        | `Json?`                 | Twitter Card meta tags, key → content                               |
+| `jsonLd`             | `Json?`                 | Parsed `application/ld+json` blocks                                 |
+| `internalLinks`      | `Json?`                 | `{ href, text }[]`, same hostname as `finalUrl`                     |
+| `externalLinks`      | `Json?`                 | `{ href, text }[]`, different hostname                              |
+| `navigationLinks`    | `Json?`                 | `{ href, text }[]` found inside `<nav>`                             |
+| `footerLinks`        | `Json?`                 | `{ href, text }[]` found inside `<footer>`                          |
+| `images`             | `Json?`                 | `{ src, alt }[]`                                                    |
+| `videos`             | `Json?`                 | `{ src, type }[]` (`type`: `video` \| `embed`)                      |
+| `contactForms`       | `Json?`                 | `{ action, method, fieldCount, fieldNames }[]`                      |
+| `emails`             | `Json?`                 | Deduplicated strings found in page text                             |
+| `phones`             | `Json?`                 | Deduplicated strings found in page text (heuristic)                 |
+| `socialLinks`        | `Json?`                 | `{ platform, url }[]`                                               |
+| `technologies`       | `Json?`                 | Detected technology names, e.g. `["WORDPRESS", "GOOGLE_ANALYTICS"]` |
+| `screenshotPath`     | `String?`               | Path relative to `SCREENSHOT_STORAGE_DIR`, not a public URL         |
+| `screenshotWidth`    | `Int?`                  |                                                                     |
+| `screenshotHeight`   | `Int?`                  |                                                                     |
+| `screenshotByteSize` | `Int?`                  |                                                                     |
+| `screenshotMimeType` | `String?`               | Always `image/png`                                                  |
+| `durationMs`         | `Int?`                  | Wall-clock time from `RUNNING` to terminal status                   |
+| `error`              | `String?`               | Populated on `FAILED`                                               |
+| `startedAt`          | `DateTime?`             |                                                                     |
+| `finishedAt`         | `DateTime?`             |                                                                     |
+| `createdAt`          | `DateTime`              |                                                                     |
+| `updatedAt`          | `DateTime`              |                                                                     |
+
+Indexes: `(businessId)`, `(status)`, `(createdAt)` — back the per-business history list
+(default sort) and future dashboards filtering by status.
+
+Cascade rationale: an analysis has no meaning outside the business it was run against
+(same rationale as `leads` → `campaigns`).
+
+**Why so many `Json` columns:** the naming-convention rule is "anything queried/filtered
+regularly gets promoted to a real column" — this milestone has no filter/search
+requirement over analysis contents (unlike `businesses`), so the inherently list/object-shaped
+captured data (links, images, headings, tag maps) stays JSON. The genuinely scalar,
+single-value facts (`title`, `canonicalUrl`, `language`, `statusCode`, ...) are still real
+columns, consistent with how `businesses` and `leads` are modeled.
+
+**Why a dedicated `WebsiteAnalysisStatus` enum instead of reusing `JobStatus`:** the two
+enums currently have the same PENDING/RUNNING/COMPLETED/FAILED shape (`JobStatus` also has
+`CANCELLED`, which doesn't apply here), but they belong to different, independently
+evolving concerns — `scrape_jobs` is the M6 durable job queue's audit trail, while
+`website_analyses` is this module's own state machine with its own future fields
+(retry policy, cancellation) that shouldn't have to stay compatible with the job queue's.
+
+### `business_audits`
+
+One LLM-generated audit (M3) scoring a business's fit, run against a `COMPLETED`
+`website_analyses` row via OpenRouter. See [PROMPTS.md](PROMPTS.md) for the
+`business-audit-v1` prompt and response schema.
+
+| Column              | Type                  | Notes                                                        |
+| ------------------- | --------------------- | ------------------------------------------------------------ |
+| `id`                | `String`              | PK, cuid                                                     |
+| `businessId`        | `String`              | FK → `businesses.id`, **onDelete: Cascade**                  |
+| `websiteAnalysisId` | `String`              | FK → `website_analyses.id`, **onDelete: Cascade**            |
+| `status`            | `BusinessAuditStatus` | `PENDING` (default) → `RUNNING` → `COMPLETED` \| `FAILED`    |
+| `promptVersion`     | `String`              | Default `"business-audit-v1"` — see [PROMPTS.md](PROMPTS.md) |
+| `model`             | `String?`             | OpenRouter model id that produced the result                 |
+| `summary`           | `String?`             | Short free-text summary of the audit                         |
+| `findings`          | `Json?`               | `{ category, severity, description }[]`                      |
+| `score`             | `Int?`                | 0–100 fit score                                              |
+| `confidence`        | `String?`             | `low` \| `medium` \| `high`, as reported by the model        |
+| `reasons`           | `Json?`               | `string[]`, 1–5 short reasons behind the score               |
+| `disqualifiers`     | `Json?`               | `string[]`, optional hard-disqualifying factors              |
+| `promptTokens`      | `Int?`                |                                                              |
+| `completionTokens`  | `Int?`                |                                                              |
+| `totalTokens`       | `Int?`                |                                                              |
+| `durationMs`        | `Int?`                | Wall-clock time from `RUNNING` to terminal status            |
+| `error`             | `String?`             | Populated on `FAILED`                                        |
+| `startedAt`         | `DateTime?`           |                                                              |
+| `finishedAt`        | `DateTime?`           |                                                              |
+| `createdAt`         | `DateTime`            |                                                              |
+| `updatedAt`         | `DateTime`            |                                                              |
+
+Indexes: `(businessId)`, `(status)`, `(createdAt)` — same rationale as
+`website_analyses`: back the per-business history list and status filtering.
+
+Cascade rationale: an audit has no meaning outside the business (or the specific
+analysis) it was run against — same rationale as `website_analyses` → `businesses`.
+
+**Why a dedicated `BusinessAuditStatus` enum instead of reusing `WebsiteAnalysisStatus`:**
+same shape today, but the two modules' state machines evolve independently (e.g. audits
+may later need a `retryCount` or a `SKIPPED` state that doesn't apply to analyses).
+
+**Side effect on `businesses`:** on `COMPLETED`, the service writes the score to
+`businesses.score` (always) and promotes `businesses.status` from `ANALYZED` to
+`AUDITED` (only if it is still exactly `ANALYZED` — idempotent past that point, so a
+business already at `EMAIL_DRAFTED` or later is never regressed by a re-audit).
+
+### `email_drafts`
+
+One LLM-generated outreach email (M4) for a business, drafted from its most recent
+`COMPLETED` `business_audits` row via OpenRouter. Sending and reply handling are owned by
+n8n, not this table — see [N8N.md](N8N.md) and [API.md](API.md#webhooks).
+
+| Column             | Type               | Notes                                                                                                             |
+| ------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `id`               | `String`           | PK, cuid                                                                                                          |
+| `businessId`       | `String`           | FK → `businesses.id`, **onDelete: Cascade**                                                                       |
+| `businessAuditId`  | `String`           | FK → `business_audits.id`, **onDelete: Cascade**                                                                  |
+| `status`           | `EmailDraftStatus` | `PENDING` (default) → `RUNNING` → `COMPLETED` \| `FAILED`                                                         |
+| `promptVersion`    | `String`           | Default `"email-personalization-v1"` — see [PROMPTS.md](PROMPTS.md)                                               |
+| `model`            | `String?`          | OpenRouter model id that produced the result                                                                      |
+| `subject`          | `String?`          | Model-generated subject line                                                                                      |
+| `opener`           | `String?`          | Model-generated personalized opener                                                                               |
+| `factUsed`         | `String?`          | The concrete fact the model cited, for QA/review                                                                  |
+| `body`             | `String?`          | Final assembled email — `OUTREACH_EMAIL_TEMPLATE` with `opener` substituted in; never model-generated directly    |
+| `promptTokens`     | `Int?`             |                                                                                                                   |
+| `completionTokens` | `Int?`             |                                                                                                                   |
+| `totalTokens`      | `Int?`             |                                                                                                                   |
+| `durationMs`       | `Int?`             | Wall-clock time from `RUNNING` to terminal status                                                                 |
+| `error`            | `String?`          | Populated on `FAILED`                                                                                             |
+| `startedAt`        | `DateTime?`        |                                                                                                                   |
+| `finishedAt`       | `DateTime?`        |                                                                                                                   |
+| `sentAt`           | `DateTime?`        | Set by the `email-sent` webhook callback once n8n confirms delivery — **not** set when "Send" is merely triggered |
+| `createdAt`        | `DateTime`         |                                                                                                                   |
+| `updatedAt`        | `DateTime`         |                                                                                                                   |
+
+Indexes: `(businessId)`, `(status)`, `(createdAt)` — same rationale as `business_audits`.
+
+Cascade rationale: a draft has no meaning outside the business (or the specific audit) it
+was generated from — same rationale as `business_audits` → `businesses`.
+
+**Why `sentAt` lives here instead of only advancing `businesses.status`:** a business can
+in principle have multiple drafts (e.g. a redraft after edits); `sentAt` records which
+specific draft was actually sent, independent of the coarser pipeline status.
+
+**Side effect on `businesses`:** on `COMPLETED`, promotes `businesses.status` from
+`AUDITED` to `EMAIL_DRAFTED` (only if still exactly `AUDITED`, same idempotent pattern as
+`business_audits`). The `email-sent` and `email-reply` webhook callbacks (not this table
+directly) later advance `businesses.status` to `EMAIL_SENT`, `RESPONDED`, or
+`MEETING_BOOKED` — via `advanceStatus()` (see below), not the simple equality check the
+two audit-pipeline promotions above use, because reply classification can jump directly to
+`MEETING_BOOKED` and callbacks can arrive out of order.
+
+**Why a monotonic `advanceStatus()` helper instead of the simple "if status is exactly X"
+check `business_audits`/`website_analyses` use:** those two only ever have one possible
+predecessor status, so an equality check is sufficient. Webhook-driven transitions don't
+have that guarantee — n8n callbacks can be delivered out of order or retried, and a reply
+can request a meeting directly without an intermediate "replied" callback. A monotonic
+"only move forward in `PIPELINE_ORDER`, `ARCHIVED` excluded" helper
+(`apps/api/src/modules/businesses/status-pipeline.ts`) is idempotent and safe regardless of
+delivery order, without special-casing every possible prior state.
 
 ### `campaigns`
 
@@ -79,7 +297,7 @@ A prospect within a campaign.
 | `phone`       | `String?`    |                                                                                       |
 | `source`      | `LeadSource` | `SCRAPED` (default) \| `IMPORTED` \| `API` \| `MANUAL`                                |
 | `status`      | `LeadStatus` | `NEW` (default) → `ENRICHED` → `QUALIFIED`/`DISQUALIFIED` → `CONTACTED` → `CONVERTED` |
-| `score`       | `Int?`       | 0–100, written by the scoring job (M5)                                                |
+| `score`       | `Int?`       | 0–100; superseded by `businesses.score`/`business_audits` (M3), never written to now  |
 | `enrichment`  | `Json?`      | Validated LLM output — schema in [PROMPTS.md](PROMPTS.md)                             |
 | `campaignId`  | `String`     | FK → `campaigns.id`, **onDelete: Cascade**                                            |
 | `createdAt`   | `DateTime`   |                                                                                       |
@@ -103,7 +321,7 @@ Background job queue consumed by `apps/worker` (see
 | `payload`    | `Json?`     | Job input (target URLs, criteria, model params)                            |
 | `result`     | `Json?`     | Output persisted by the worker                                             |
 | `error`      | `String?`   | Populated on failure                                                       |
-| `attempts`   | `Int`       | Default 0; incremented per try (max attempts enforced in M3)               |
+| `attempts`   | `Int`       | Default 0; incremented per try (max attempts enforced in M6)               |
 | `campaignId` | `String?`   | FK → `campaigns.id`, **onDelete: SetNull**                                 |
 | `startedAt`  | `DateTime?` |                                                                            |
 | `finishedAt` | `DateTime?` |                                                                            |
@@ -118,10 +336,20 @@ SetNull rationale: jobs are an audit/operations record; they outlive campaign de
 
 ```mermaid
 erDiagram
+    businesses }o--o{ tags : labelled
+    businesses ||--o{ website_analyses : "analyzed by"
+    businesses ||--o{ business_audits : "audited by"
+    businesses ||--o{ email_drafts : "drafted for"
+    website_analyses ||--o{ business_audits : "audited from"
+    business_audits ||--o{ email_drafts : "drafted from"
     users ||--o{ campaigns : owns
     campaigns ||--o{ leads : contains
     campaigns |o--o{ scrape_jobs : "tracked by"
 ```
+
+> `campaigns`/`leads` are scaffold-era models superseded by `businesses` as the
+> operative lead entity; their future (repurpose vs. remove) is decided with M7 — see
+> [ROADMAP.md](ROADMAP.md).
 
 ## Index policy
 
@@ -132,9 +360,16 @@ erDiagram
 
 ## Migration strategy
 
-- **Tooling:** Prisma Migrate. Migrations live in `apps/api/prisma/migrations/`.
+- **Tooling:** Prisma Migrate. Migrations live in `apps/api/prisma/migrations/` — the
+  first one (`20260703091443_init_lead_management`) creates the full schema above;
+  `20260703174233_add_website_analysis` adds the `website_analyses` table;
+  `20260704173451_add_business_audit` adds the `business_audits` table and
+  `businesses.score`; `20260705043540_add_email_draft` adds the `email_drafts` table.
 - **Create (dev):** `./scripts/db-migrate.sh <name>` (wraps `prisma migrate dev`) against
   the local Compose Postgres. Commit the generated SQL with the schema change.
+- **Tests:** the Vitest global setup applies migrations to the test database
+  (`TEST_DATABASE_URL`, default `omnistacks_test`) before integration tests run — in CI
+  this is a `postgres:16` service container.
 - **Apply (prod):** automatic — the API container's entrypoint
   (`docker/api/entrypoint.sh`) runs `prisma migrate deploy` before starting the server.
   Deploys are self-contained; there is no manual migration step.

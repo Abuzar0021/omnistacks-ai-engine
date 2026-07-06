@@ -92,25 +92,32 @@ backup (below) — never hand-edit the schema in production.
 `.env.example` is the authoritative template — every variable, documented, with dev
 defaults. Summary:
 
-| Variable                                        | Used by     | Purpose                                             | Prod notes                                                         |
-| ----------------------------------------------- | ----------- | --------------------------------------------------- | ------------------------------------------------------------------ |
-| `NODE_ENV`                                      | api, worker | `development` / `production`                        | `production`                                                       |
-| `POSTGRES_USER` / `_PASSWORD` / `_DB` / `_PORT` | postgres    | Database bootstrap credentials                      | Strong password; no published port                                 |
-| `DATABASE_URL`                                  | api, worker | Prisma connection string                            | Host `postgres` inside Compose                                     |
-| `API_PORT`                                      | api         | Listen port (default `4000`)                        |                                                                    |
-| `API_CORS_ORIGIN`                               | api         | Allowed origins (comma-separated)                   | Public web origin                                                  |
-| `JWT_SECRET`                                    | api         | Token signing secret                                | 32+ random bytes, rotated on compromise                            |
-| `WEB_PORT`                                      | web         | Published nginx port (default `8080`)               | Behind reverse proxy                                               |
-| `VITE_API_URL`                                  | web (build) | API base URL baked into the bundle (default `/api`) | Keep `/api` (same-origin)                                          |
-| `OPENROUTER_API_KEY`                            | api, worker | OpenRouter auth                                     | Required for M5+                                                   |
-| `OPENROUTER_BASE_URL`                           | api, worker | Gateway URL                                         | Default fine                                                       |
-| `OPENROUTER_MODEL`                              | api, worker | Default model                                       | Cost/quality lever                                                 |
-| `WORKER_CONCURRENCY`                            | worker      | Parallel job handlers                               | Tune to CPU/memory                                                 |
-| `PLAYWRIGHT_HEADLESS`                           | worker      | Headless browser toggle                             | `true`                                                             |
-| `N8N_PORT` / `N8N_HOST` / `N8N_PROTOCOL`        | n8n         | Public identity of the n8n instance                 | Public HTTPS values                                                |
-| `WEBHOOK_URL`                                   | n8n, api    | Base URL for n8n webhooks                           | Public HTTPS URL                                                   |
-| `N8N_ENCRYPTION_KEY`                            | n8n         | Encrypts stored credentials                         | **Losing it = losing all n8n credentials.** Back it up separately. |
-| `GENERIC_TIMEZONE`                              | n8n         | Cron timezone                                       |                                                                    |
+| Variable                                        | Used by     | Purpose                                             | Prod notes                                                                     |
+| ----------------------------------------------- | ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `NODE_ENV`                                      | api, worker | `development` / `production`                        | `production`                                                                   |
+| `POSTGRES_USER` / `_PASSWORD` / `_DB` / `_PORT` | postgres    | Database bootstrap credentials                      | Strong password; no published port                                             |
+| `DATABASE_URL`                                  | api, worker | Prisma connection string                            | Host `postgres` inside Compose                                                 |
+| `API_PORT`                                      | api         | Listen port (default `4000`)                        |                                                                                |
+| `API_CORS_ORIGIN`                               | api         | Allowed origins (comma-separated)                   | Public web origin                                                              |
+| `JWT_SECRET`                                    | api         | Token signing secret                                | 32+ random bytes, rotated on compromise                                        |
+| `WEB_PORT`                                      | web         | Published nginx port (default `8080`)               | Behind reverse proxy                                                           |
+| `VITE_API_URL`                                  | web (build) | API base URL baked into the bundle (default `/api`) | Keep `/api` (same-origin)                                                      |
+| `OPENROUTER_API_KEY`                            | api, worker | OpenRouter auth                                     | Required for M5+                                                               |
+| `OPENROUTER_BASE_URL`                           | api, worker | Gateway URL                                         | Default fine                                                                   |
+| `OPENROUTER_MODEL`                              | api, worker | Default model                                       | Cost/quality lever                                                             |
+| `WORKER_CONCURRENCY`                            | worker      | Parallel job handlers                               | Tune to CPU/memory                                                             |
+| `PLAYWRIGHT_HEADLESS`                           | api, worker | Headless browser toggle                             | `true`                                                                         |
+| `ANALYSIS_MAX_CONCURRENCY`                      | api         | Simultaneous website analyses                       | Tune to CPU/memory (Playwright launches are heavy)                             |
+| `ANALYSIS_NAVIGATION_TIMEOUT_MS`                | api         | Max time to load a target page                      | Default `30000` fine                                                           |
+| `ANALYSIS_STABLE_TIMEOUT_MS`                    | api         | Max wait for network idle before capturing          | Default `5000` fine                                                            |
+| `SCREENSHOT_STORAGE_DIR`                        | api         | Where analysis screenshots are written              | Mount a volume (`api_screenshots` in Compose) so they survive restarts         |
+| `GOOGLE_PLACES_API_KEY`                         | api         | Auth for Google Places API (lead discovery)         | Requires a Google Cloud project with Places API (New) enabled + billing set up |
+| `GOOGLE_PLACES_BASE_URL`                        | api         | Places API host                                     | Default fine                                                                   |
+| `LEAD_DISCOVERY_MAX_CONCURRENCY`                | api         | Simultaneous lead-discovery searches                | Tune to your Places API quota                                                  |
+| `N8N_PORT` / `N8N_HOST` / `N8N_PROTOCOL`        | n8n         | Public identity of the n8n instance                 | Public HTTPS values                                                            |
+| `WEBHOOK_URL`                                   | n8n, api    | Base URL for n8n webhooks                           | Public HTTPS URL                                                               |
+| `N8N_ENCRYPTION_KEY`                            | n8n         | Encrypts stored credentials                         | **Losing it = losing all n8n credentials.** Back it up separately.             |
+| `GENERIC_TIMEZONE`                              | n8n         | Cron timezone                                       |                                                                                |
 
 Env vars are validated at startup with Zod (`apps/*/src/config/env.ts`); a misconfigured
 service exits immediately with the offending field names.
@@ -126,7 +133,9 @@ service exits immediately with the offending field names.
 | n8n instance files                  | `n8n_data` volume     | Nightly tar of the volume                                                                                 |
 | `.env` (incl. `N8N_ENCRYPTION_KEY`) | Host                  | Stored in the team secret manager — a DB backup without the encryption key cannot decrypt n8n credentials |
 
-Workflow JSON and code need no backup — they live in git.
+Workflow JSON and code need no backup — they live in git. Website analysis screenshots
+(`api_screenshots` volume) are excluded too — they're regenerable by re-running the
+analysis, not a system of record.
 
 **Nightly dump (host cron):**
 

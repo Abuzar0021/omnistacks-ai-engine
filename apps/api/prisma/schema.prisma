@@ -34,6 +34,292 @@ enum UserRole {
 }
 
 // ---------------------------------------------------------------------------
+// Businesses (lead management)
+// ---------------------------------------------------------------------------
+
+model Business {
+  id        String         @id @default(cuid())
+  name      String
+  /// Raw website URL as entered/imported
+  website   String?
+  /// Normalized domain derived from website (lowercase, no www/protocol/path).
+  /// Uniqueness is the duplicate-prevention mechanism for imports and creates.
+  domain    String?        @unique
+  email     String?
+  phone     String?
+  industry  String?
+  country   String?
+  city      String?
+  status    BusinessStatus @default(NEW)
+  /// Denormalized from the latest completed BusinessAudit, for list-view sorting.
+  score     Int?
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  tags            Tag[]
+  websiteAnalyses WebsiteAnalysis[]
+  audits          BusinessAudit[]
+  emailDrafts     EmailDraft[]
+
+  @@index([status])
+  @@index([industry])
+  @@index([country])
+  @@index([name])
+  @@index([email])
+  @@index([createdAt])
+  @@index([score])
+  @@map("businesses")
+}
+
+enum BusinessStatus {
+  NEW
+  ANALYZED
+  AUDITED
+  EMAIL_DRAFTED
+  EMAIL_SENT
+  RESPONDED
+  MEETING_BOOKED
+  CLIENT
+  ARCHIVED
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  businesses Business[]
+
+  @@map("tags")
+}
+
+// ---------------------------------------------------------------------------
+// Website analysis (collects raw website data for a business — no AI, no
+// scoring; see docs/ARCHITECTURE.md for the module's scope boundary)
+// ---------------------------------------------------------------------------
+
+model WebsiteAnalysis {
+  id         String                @id @default(cuid())
+  businessId String
+  status     WebsiteAnalysisStatus @default(PENDING)
+
+  /// business.website at the time the analysis was requested
+  requestedUrl  String
+  /// URL after following redirects
+  finalUrl      String?
+  statusCode    Int?
+  redirectCount Int?
+
+  title           String?
+  metaDescription String?
+  canonicalUrl    String?
+  language        String?
+  faviconUrl      String?
+
+  /// { h1: string[], h2: string[], ..., h6: string[] }
+  headings    Json?
+  /// Open Graph meta tags, key -> content
+  openGraph   Json?
+  /// Twitter Card meta tags, key -> content
+  twitterCard Json?
+  /// Parsed application/ld+json blocks
+  jsonLd      Json?
+
+  /// { href, text }[]
+  internalLinks   Json?
+  externalLinks   Json?
+  navigationLinks Json?
+  footerLinks     Json?
+  /// { src, alt }[]
+  images          Json?
+  /// { src, type }[]
+  videos          Json?
+  /// { action, method, fieldCount, fieldNames }[]
+  contactForms    Json?
+  /// deduplicated strings
+  emails          Json?
+  phones          Json?
+  /// { platform, url }[]
+  socialLinks     Json?
+  /// detected technology names, e.g. ["WORDPRESS", "GOOGLE_ANALYTICS"]
+  technologies    Json?
+
+  screenshotPath     String?
+  screenshotWidth    Int?
+  screenshotHeight   Int?
+  screenshotByteSize Int?
+  screenshotMimeType String?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  audits   BusinessAudit[]
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("website_analyses")
+}
+
+enum WebsiteAnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Business audits (AI-generated, via OpenRouter — see docs/PROMPTS.md
+// "business-audit-v1"). Runs against a COMPLETED WebsiteAnalysis; no
+// scraping, sending, or n8n here — that's this module's scope boundary.
+// ---------------------------------------------------------------------------
+
+model BusinessAudit {
+  id                String              @id @default(cuid())
+  businessId        String
+  websiteAnalysisId String
+  status            BusinessAuditStatus @default(PENDING)
+
+  promptVersion String  @default("business-audit-v1")
+  model         String?
+
+  summary       String?
+  /// { category, severity, description }[]
+  findings      Json?
+  score         Int?
+  confidence    String?
+  /// string[]
+  reasons       Json?
+  /// string[]
+  disqualifiers Json?
+
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  websiteAnalysis WebsiteAnalysis @relation(fields: [websiteAnalysisId], references: [id], onDelete: Cascade)
+  emailDrafts     EmailDraft[]
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("business_audits")
+}
+
+enum BusinessAuditStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Email drafts (AI-generated, via OpenRouter — see docs/PROMPTS.md
+// "email-personalization-v1"). Runs against a COMPLETED BusinessAudit; sending
+// and reply handling are owned by n8n, not this module — see docs/N8N.md.
+// ---------------------------------------------------------------------------
+
+model EmailDraft {
+  id              String           @id @default(cuid())
+  businessId      String
+  businessAuditId String
+  status          EmailDraftStatus @default(PENDING)
+
+  promptVersion String  @default("email-personalization-v1")
+  model         String?
+
+  subject  String?
+  /// Personalized opener generated by the model
+  opener   String?
+  /// The concrete fact the model cited, for QA/review
+  factUsed String?
+  /// Final assembled email (opener + OUTREACH_EMAIL_TEMPLATE)
+  body     String?
+
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  /// Set by the email-sent webhook callback once n8n confirms delivery
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessAudit BusinessAudit @relation(fields: [businessAuditId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_drafts")
+}
+
+enum EmailDraftStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Lead discovery (Playwright-driven directory search — see docs/ARCHITECTURE.md
+// for the module's scope boundary). Populates Business rows with status=NEW;
+// everything downstream (analyze/audit/draft/send) is unchanged.
+// ---------------------------------------------------------------------------
+
+model LeadDiscoveryJob {
+  id       String                 @id @default(cuid())
+  status   LeadDiscoveryJobStatus @default(PENDING)
+  industry String
+  location String
+  country  String?
+  limit    Int                    @default(20)
+
+  /// Total candidates scraped, before dedup
+  foundCount Int?
+  /// New Business rows actually created
+  createdCount Int?
+  /// Candidates skipped because the domain already existed
+  duplicateCount Int?
+
+  durationMs Int?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("lead_discovery_jobs")
+}
+
+enum LeadDiscoveryJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
 // Campaigns
 // ---------------------------------------------------------------------------
 

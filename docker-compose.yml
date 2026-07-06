@@ -40,8 +40,28 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.5}
+      PLAYWRIGHT_HEADLESS: 'true'
+      ANALYSIS_MAX_CONCURRENCY: ${ANALYSIS_MAX_CONCURRENCY:-2}
+      ANALYSIS_NAVIGATION_TIMEOUT_MS: ${ANALYSIS_NAVIGATION_TIMEOUT_MS:-30000}
+      ANALYSIS_STABLE_TIMEOUT_MS: ${ANALYSIS_STABLE_TIMEOUT_MS:-5000}
+      SCREENSHOT_STORAGE_DIR: ./storage/screenshots
+      # BUSINESS_CONTEXT/OUTREACH_* fall back to empty only if unset on the host
+      # AND there's no repo-root .env (Compose reads that for substitution) —
+      # copy .env.example to .env to get the app's built-in default text/values.
+      BUSINESS_CONTEXT: ${BUSINESS_CONTEXT:-}
+      AUDIT_MAX_CONCURRENCY: ${AUDIT_MAX_CONCURRENCY:-2}
+      OUTREACH_SENDER_NAME: ${OUTREACH_SENDER_NAME:-}
+      OUTREACH_EMAIL_TEMPLATE: ${OUTREACH_EMAIL_TEMPLATE:-}
+      EMAIL_DRAFT_MAX_CONCURRENCY: ${EMAIL_DRAFT_MAX_CONCURRENCY:-2}
+      N8N_API_BASE_URL: ${N8N_API_BASE_URL:-http://n8n:5678}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-change-me}
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-change-me}
+      GOOGLE_PLACES_BASE_URL: ${GOOGLE_PLACES_BASE_URL:-https://places.googleapis.com}
+      LEAD_DISCOVERY_MAX_CONCURRENCY: ${LEAD_DISCOVERY_MAX_CONCURRENCY:-2}
     ports:
       - '${API_PORT:-4000}:4000'
+    volumes:
+      - api_screenshots:/app/apps/api/storage/screenshots
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +119,12 @@ services:
       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me}
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      # Exposed to workflow expressions as $env.* — see n8n/workflows/*.json
+      # and docs/N8N.md. N8N_BLOCK_ENV_ACCESS_IN_NODE must stay 'false' (n8n's
+      # default) for $env to be readable from expressions.
+      API_BASE_URL: ${API_BASE_URL:-http://api:4000/api}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-change-me}
+      OUTREACH_FROM_EMAIL: ${OUTREACH_FROM_EMAIL:-}
     ports:
       - '${N8N_PORT:-5678}:5678'
     volumes:
@@ -110,3 +136,4 @@ services:
 volumes:
   postgres_data:
   n8n_data:
+  api_screenshots:

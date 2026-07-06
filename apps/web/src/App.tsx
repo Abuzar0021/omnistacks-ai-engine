@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react';
-import { apiFetch } from './api/client';
+import { NavLink, Route, Routes } from 'react-router-dom';
+import { BusinessAuditDetailPage } from './pages/BusinessAuditDetailPage';
+import { BusinessDetailPage } from './pages/BusinessDetailPage';
+import { BusinessListPage } from './pages/BusinessListPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { EmailDraftDetailPage } from './pages/EmailDraftDetailPage';
+import { ImportPage } from './pages/ImportPage';
+import { LeadDiscoveryPage } from './pages/LeadDiscoveryPage';
+import { WebsiteAnalysisDetailPage } from './pages/WebsiteAnalysisDetailPage';
 
-type ApiStatus = 'checking' | 'online' | 'offline';
+function navClass({ isActive }: { isActive: boolean }) {
+  return isActive ? 'nav-item nav-item-active' : 'nav-item';
+}
 
 export function App() {
-  const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
-
-  useEffect(() => {
-    apiFetch<{ status: string }>('/health')
-      .then(() => setApiStatus('online'))
-      .catch(() => setApiStatus('offline'));
-  }, []);
-
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -19,29 +20,42 @@ export function App() {
           OmniStacks<span className="logo-accent">AI</span>
         </h1>
         <nav className="nav">
-          {/* Placeholder navigation — pages live in src/pages/ */}
-          <span className="nav-item nav-item-active">Dashboard</span>
-          <span className="nav-item">Campaigns</span>
-          <span className="nav-item">Leads</span>
-          <span className="nav-item">Workflows</span>
-          <span className="nav-item">Settings</span>
+          <NavLink to="/" end className={navClass}>
+            Dashboard
+          </NavLink>
+          <NavLink to="/businesses" className={navClass}>
+            Businesses
+          </NavLink>
+          <NavLink to="/import" className={navClass}>
+            Import CSV
+          </NavLink>
+          <NavLink to="/discover" className={navClass}>
+            Find leads
+          </NavLink>
         </nav>
       </aside>
 
       <main className="content">
-        <header className="content-header">
-          <h2>Dashboard</h2>
-          <span className={`status-pill status-${apiStatus}`}>API: {apiStatus}</span>
-        </header>
-
-        <section className="card">
-          <h3>Scaffold ready</h3>
-          <p>
-            This is the OmniStacks AI Engine frontend shell. Feature pages belong in{' '}
-            <code>src/pages/</code>, shared UI in <code>src/components/</code>, and API access goes
-            through <code>src/api/client.ts</code>.
-          </p>
-        </section>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/businesses" element={<BusinessListPage />} />
+          <Route path="/businesses/:id" element={<BusinessDetailPage />} />
+          <Route
+            path="/businesses/:businessId/website-analyses/:analysisId"
+            element={<WebsiteAnalysisDetailPage />}
+          />
+          <Route
+            path="/businesses/:businessId/audits/:auditId"
+            element={<BusinessAuditDetailPage />}
+          />
+          <Route
+            path="/businesses/:businessId/email-drafts/:draftId"
+            element={<EmailDraftDetailPage />}
+          />
+          <Route path="/import" element={<ImportPage />} />
+          <Route path="/discover" element={<LeadDiscoveryPage />} />
+          <Route path="*" element={<p className="text-muted">Page not found.</p>} />
+        </Routes>
       </main>
     </div>
   );

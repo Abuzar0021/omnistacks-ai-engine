@@ -1,9 +1,9 @@
 # Prompts
 
 Registry of every AI prompt the system uses. **This file is the source of truth**: prompts
-are designed and reviewed here first, then implemented (M5) as constants in
-`apps/api/src/modules/` / `apps/worker/src/jobs/` that must match this document. A prompt
-change is a PR that updates both.
+are designed and reviewed here first, then implemented as constants in
+`apps/api/src/modules/` (`business-audit-v1` in M3, `email-personalization-v1` in M4) that
+must match this document. A prompt change is a PR that updates both.
 
 ## Conventions
 
@@ -25,117 +25,82 @@ change is a PR that updates both.
 
 ---
 
-## `lead-enrichment-v1`
+## `lead-enrichment-v1` and `lead-scoring-v1` — superseded
 
-**Purpose:** turn raw scraped lead data plus page context into a structured company/person
-profile, stored in `leads.enrichment` (status → `ENRICHED`). Used by the worker's `ENRICH`
-job.
-
-**Model / params:** default model, temperature `0`, max_tokens `1024`.
-
-**Inputs:** `fullName`, `title`, `company`, `website`, `linkedinUrl`, `pageText` (truncated
-scraped text, ≤ 8k chars).
-
-**Template (system):**
-
-```text
-You are a B2B lead research assistant. Using ONLY the information provided, produce a
-structured profile of the lead and their company. Do not invent facts; use null when the
-information is not present. Respond with a single JSON object matching the schema — no
-prose, no markdown fences.
-```
-
-**Template (user):**
-
-```text
-Lead:
-- Name: {{fullName}}
-- Title: {{title}}
-- Company: {{company}}
-- Website: {{website}}
-- LinkedIn: {{linkedinUrl}}
-
-Scraped page content:
-"""
-{{pageText}}
-"""
-```
-
-**JSON response schema:**
-
-```json
-{
-  "type": "object",
-  "required": ["company", "person", "signals"],
-  "additionalProperties": false,
-  "properties": {
-    "company": {
-      "type": "object",
-      "required": ["industry", "size", "summary"],
-      "properties": {
-        "industry": { "type": ["string", "null"] },
-        "size": {
-          "type": ["string", "null"],
-          "enum": ["1-10", "11-50", "51-200", "201-1000", "1000+", null]
-        },
-        "summary": { "type": ["string", "null"], "maxLength": 500 },
-        "location": { "type": ["string", "null"] },
-        "techStack": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "person": {
-      "type": "object",
-      "required": ["seniority", "department"],
-      "properties": {
-        "seniority": {
-          "type": ["string", "null"],
-          "enum": ["c-level", "vp", "director", "manager", "ic", null]
-        },
-        "department": { "type": ["string", "null"] }
-      }
-    },
-    "signals": {
-      "type": "array",
-      "items": { "type": "string", "maxLength": 200 },
-      "description": "Buying signals found in the source material (hiring, funding, tooling mentions...)"
-    }
-  }
-}
-```
+These were designed when data collection was expected to be an LLM step. M2 (website
+analyzer) replaced that with deterministic Playwright extraction — no model call needed
+to turn a scraped page into structured data, and it's cheaper and more reliable that way.
+`business-audit-v1` below is their replacement: one call that both audits and scores,
+operating on M2's actual output.
 
 ---
 
-## `lead-scoring-v1`
+## `business-audit-v1`
 
-**Purpose:** score a lead 0–100 against the campaign's ideal customer profile (ICP);
-writes `leads.score` and drives `QUALIFIED`/`DISQUALIFIED` (threshold configured per
-campaign). Used by the worker's `SCORE` job. Runs after enrichment.
+**Purpose:** given a business and the structured data M2 already collected about its
+website, produce an evidence-based audit (findings: what's working, what isn't, what
+opportunity exists) plus a 0–100 fit score against the operator's own business/ICP
+description. Used by the `BusinessAudit` service (M3); runs after a `WebsiteAnalysis`
+reaches `COMPLETED` (`ANALYZED → AUDITED`).
 
-**Model / params:** default model, temperature `0`, max_tokens `512`.
+**Model / params:** default model, temperature `0`, max_tokens `4096` (kept well above the
+response schema's own size — "thinking"-style models spend part of the budget on
+chain-of-thought before the JSON and get cut off mid-response if it's too tight).
 
-**Inputs:** `icpDescription` (from campaign settings), `leadProfile` (the
-`lead-enrichment-v1` output JSON), `leadFields` (name/title/company).
+**Inputs:**
+
+- `businessContext` — free text from the `BUSINESS_CONTEXT` env var: who the operator is,
+  what they offer, and what an ideal customer looks like. Single global value (one
+  operator, no per-campaign ICP yet — see [ROADMAP.md](ROADMAP.md) M3 note).
+- `business` — `name`, `industry`, `country`, `city` (whatever is set on the `Business`).
+- `analysis` — a trimmed subset of the `WebsiteAnalysis` record: `title`,
+  `metaDescription`, top-level headings (h1/h2), `technologies`, counts of
+  internal/external links, whether `contactForms`/`emails`/`phones`/`socialLinks` are
+  present. Deliberately not the full raw payload (keeps the prompt small and avoids
+  paying to re-send data the model doesn't need).
 
 **Template (system):**
 
 ```text
-You are a lead qualification engine. Score how well the lead matches the ideal customer
-profile from 0 (no fit) to 100 (perfect fit). Be conservative: missing information lowers
-confidence, not the score dimensions themselves. Respond with a single JSON object
-matching the schema — no prose.
+You are a B2B opportunity auditor. Given a description of our business and our ideal
+customers, and structured data collected from a prospect's website, assess how well they
+fit and what opportunity exists to help them. Every finding must cite something present in
+the provided data — do not invent facts.
+
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be `{`.
+{
+  "summary": string (max 500 chars),
+  "findings": [{ "category": "seo" | "performance" | "design" | "content" | "technology" | "contact" | "trust" | "other", "severity": "low" | "medium" | "high", "description": string (max 300 chars) }],
+  "score": integer 0-100,
+  "confidence": "low" | "medium" | "high",
+  "reasons": string[] (1 to 5 items, each max 200 chars),
+  "disqualifiers": string[] (optional, each max 200 chars) — hard blockers if any (wrong geography, competitor, already a client, ...)
+}
 ```
+
+Some models (notably free-tier "reasoning" models) preface their output with a chain-of-thought
+preamble despite this instruction (observed in production: a response starting `We need to...`
+before the JSON object). `callJsonWithRetry` recovers the JSON object from surrounding text as a
+defense-in-depth measure, but the prompt still asks for JSON-only output first.
+
+The response schema is embedded directly in this system prompt (not left implicit) —
+earlier revisions said only "matching the schema" without stating it, which left the model
+guessing at field names (observed in production: it invented `fitScore`, `opportunities`,
+etc. instead of the fields below).
 
 **Template (user):**
 
 ```text
-Ideal customer profile:
-{{icpDescription}}
+About us and our ideal customers:
+{{businessContext}}
 
-Lead:
-{{leadFields}}
+Prospect:
+{{business}}
 
-Enriched profile:
-{{leadProfile}}
+Website data collected:
+{{analysis}}
 ```
 
 **JSON response schema:**
@@ -143,9 +108,34 @@ Enriched profile:
 ```json
 {
   "type": "object",
-  "required": ["score", "confidence", "reasons"],
+  "required": ["summary", "findings", "score", "confidence", "reasons"],
   "additionalProperties": false,
   "properties": {
+    "summary": { "type": "string", "maxLength": 500 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "severity", "description"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "seo",
+              "performance",
+              "design",
+              "content",
+              "technology",
+              "contact",
+              "trust",
+              "other"
+            ]
+          },
+          "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+          "description": { "type": "string", "maxLength": 300 }
+        }
+      }
+    },
     "score": { "type": "integer", "minimum": 0, "maximum": 100 },
     "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
     "reasons": {
@@ -157,44 +147,72 @@ Enriched profile:
     "disqualifiers": {
       "type": "array",
       "items": { "type": "string", "maxLength": 200 },
-      "description": "Hard blockers if any (wrong geography, competitor, etc.)"
+      "description": "Hard blockers if any (wrong geography, competitor, already a client, ...)"
     }
   }
 }
 ```
 
+Stored on `BusinessAudit`: `summary`, `findings`, `score`, `confidence`, `reasons`,
+`disqualifiers` map directly to columns/JSON fields of the same name (see
+[DATABASE.md](DATABASE.md#business_audits)). On completion, `score` is also denormalized
+onto `Business.score` (for list-view sorting) and `Business.status` advances
+`ANALYZED → AUDITED`.
+
 ---
 
 ## `email-personalization-v1`
 
-**Purpose:** generate a personalized first-line/hook and subject for outreach, consumed by
-the n8n outreach workflow (M6). The template body of the email is owned by the campaign;
-the LLM only personalizes.
+**Purpose:** given a business and its completed audit, generate a personalized opener and
+subject line for an outreach email. Used by the `EmailDraft` service (M4); runs after a
+`BusinessAudit` reaches `COMPLETED` (`AUDITED → EMAIL_DRAFTED`). Only the opener is
+model-generated — the rest of the email body comes from the operator's own
+`OUTREACH_EMAIL_TEMPLATE` env var (a static template with an `{{opener}}` placeholder),
+assembled in code, never by the model. This keeps the LLM's job narrow (one fact, one
+sentence) and the rest of the email consistent and reviewable.
 
-**Model / params:** default model, temperature `0.7`, max_tokens `512`.
+**Model / params:** default model, temperature `0.7`, max_tokens `2048` (same reasoning-model
+headroom rationale as `business-audit-v1`).
 
-**Inputs:** `leadFields`, `leadProfile` (enrichment output), `campaignPitch` (one-sentence
-value prop from campaign settings), `tone` (`"professional"` | `"casual"`).
+**Inputs:**
+
+- `businessContext` — the same `BUSINESS_CONTEXT` env var `business-audit-v1` uses.
+- `business` — `name`, `industry`, `country`, `city` (same shape as `business-audit-v1`).
+- `audit` — a trimmed subset of the business's latest completed `BusinessAudit`:
+  `summary`, `score`, `reasons`. Deliberately not the full `findings`/`disqualifiers` — a
+  one-line opener doesn't need them.
+- `tone` — fixed `"professional"` for now (no per-campaign tone yet, consistent with the
+  single global `BUSINESS_CONTEXT` — see [ROADMAP.md](ROADMAP.md) M3 note).
 
 **Template (system):**
 
 ```text
-You write concise, specific B2B outreach openers. Use one concrete fact about the lead or
-their company from the provided profile — never generic flattery. No emojis, no
-exclamation marks, under 40 words for the opener. Respond with a single JSON object
-matching the schema — no prose.
+You write concise, specific B2B outreach openers. Use one concrete fact about the
+prospect or their website from the provided audit — never generic flattery. No emojis, no
+exclamation marks, under 40 words for the opener.
+
+Respond with a single JSON object matching exactly this schema. Output nothing else: no
+prose, no markdown fences, no reasoning or thinking before or after it, no extra keys, no
+renamed keys. The very first character of your response must be `{`.
+{
+  "subject": string (max 80 chars),
+  "opener": string (max 300 chars),
+  "factUsed": string (optional, max 200 chars) — the concrete fact referenced, for QA/review
+}
 ```
 
 **Template (user):**
 
 ```text
-Lead:
-{{leadFields}}
+About us and our ideal customers:
+{{businessContext}}
 
-Profile:
-{{leadProfile}}
+Prospect:
+{{business}}
 
-Our pitch: {{campaignPitch}}
+Our audit of their site:
+{{audit}}
+
 Tone: {{tone}}
 ```
 
@@ -217,12 +235,24 @@ Tone: {{tone}}
 }
 ```
 
+Stored on `EmailDraft`: `subject`, `opener`, `factUsed` map directly to columns of the
+same name (see [DATABASE.md](DATABASE.md#email_drafts)). `body` is **not** part of the
+model's response — it's assembled by substituting `{{opener}}` and `{{senderName}}`
+(from `OUTREACH_SENDER_NAME`) into `OUTREACH_EMAIL_TEMPLATE` before being stored, so the
+persisted `body` is always the exact text a "Send" action will hand to n8n (see
+[N8N.md](N8N.md)). On completion, `Business.status` advances `AUDITED → EMAIL_DRAFTED`.
+
 ---
 
 ## `scrape-query-expansion-v1`
 
+> Belongs to the scaffold-era `Campaign`/`Lead`/`scrape_jobs` scraping flow, which is
+> superseded by `Business` as the operative entity (see [DATABASE.md](DATABASE.md) and
+> [ROADMAP.md](ROADMAP.md)). Undecided — repurpose or remove — pending the M7 campaign
+> redesign; not implemented by M3 or M4, both of which operate on `Business` directly.
+
 **Purpose:** expand a campaign's ICP description into concrete search queries/target lists
-for the `SCRAPE` job planner (M4). Keeps scraping targeted instead of crawling broadly.
+for the `SCRAPE` job planner. Keeps scraping targeted instead of crawling broadly.
 
 **Model / params:** default model, temperature `0.3`, max_tokens `512`.
 
