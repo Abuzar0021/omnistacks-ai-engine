@@ -58,7 +58,11 @@ export async function callJsonWithRetry<T>(
         messages = [...messages, buildRetryMessage(`Response was not valid JSON: ${message}`)];
         continue;
       }
-      throw new Error(`Model returned invalid JSON after retry — never stored: ${message}`);
+      const finishReason = response.choices[0]?.finish_reason ?? 'unknown';
+      throw new Error(
+        `Model returned invalid JSON after retry — never stored: ${message} ` +
+          `(finish_reason=${finishReason}, responseLength=${content.length})`,
+      );
     }
 
     const validated = schema.safeParse(parsed);

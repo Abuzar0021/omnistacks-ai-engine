@@ -118,11 +118,14 @@ export class BusinessAuditService {
         analysis,
       });
 
+      // maxTokens is well above the response schema's own size — "thinking"-style
+      // models spend a chunk of the budget on chain-of-thought before the JSON
+      // and get cut off mid-response (never producing valid JSON) if it's too tight.
       const { result, model, usage } = await callJsonWithRetry(
         this.chat,
         messages,
         auditResponseSchema,
-        { temperature: 0, maxTokens: 1024 },
+        { temperature: 0, maxTokens: 4096 },
         buildRetryMessage,
       );
       const finishedAt = new Date();
