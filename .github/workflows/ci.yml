@@ -28,6 +28,9 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate --schema apps/api/prisma/schema.prisma
+        env:
+          # prisma validate resolves env() in the schema but never connects
+          DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci?schema=public'
 
       - name: Generate Prisma client
         run: npm run prisma:generate

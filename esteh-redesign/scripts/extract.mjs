@@ -103,7 +103,10 @@ const COLOR_RE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|rgba?\([^)]+\)|hs
 function normalizeColor(raw) {
   // returns {hex, alpha} or null. Handles #rgb #rrggbb #rrggbbaa rgb() rgba() hsl() hsla()
   raw = raw.trim().toLowerCase();
-  let r, g, b, a = 1;
+  let r,
+    g,
+    b,
+    a = 1;
   let m;
   if ((m = raw.match(/^#([0-9a-f]{3,8})$/))) {
     let h = m[1];
@@ -115,9 +118,9 @@ function normalizeColor(raw) {
   } else if ((m = raw.match(/^rgba?\(([^)]+)\)$/))) {
     const parts = m[1].split(/[,\s/]+/).filter(Boolean);
     if (parts.length < 3) return null;
-    [r, g, b] = parts.slice(0, 3).map((v) =>
-      v.endsWith('%') ? Math.round(parseFloat(v) * 2.55) : parseFloat(v)
-    );
+    [r, g, b] = parts
+      .slice(0, 3)
+      .map((v) => (v.endsWith('%') ? Math.round(parseFloat(v) * 2.55) : parseFloat(v)));
     if (parts[3] !== undefined)
       a = parts[3].endsWith('%') ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
   } else if ((m = raw.match(/^hsla?\(([^)]+)\)$/))) {
@@ -163,7 +166,8 @@ function isNearBlack({ r, g, b }) {
   return r < 20 && g < 20 && b < 20;
 }
 function isGray({ r, g, b }) {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
   return max - min < 12; // low chroma
 }
 
@@ -173,7 +177,8 @@ const proxyBypass = process.env.NO_PROXY || process.env.no_proxy || 'localhost,1
 
 const launchOpts = { headless: true };
 // this environment pre-installs Chromium outside playwright's expected revision dir
-if (existsSync('/opt/pw-browsers/chromium')) launchOpts.executablePath = '/opt/pw-browsers/chromium';
+if (existsSync('/opt/pw-browsers/chromium'))
+  launchOpts.executablePath = '/opt/pw-browsers/chromium';
 if (proxyServer && !BASE.includes('127.0.0.1') && !BASE.includes('localhost')) {
   launchOpts.proxy = { server: proxyServer, bypass: proxyBypass };
   log('using proxy', proxyServer);
@@ -216,7 +221,9 @@ context.on('response', async (response) => {
 // in-page collectors -------------------------------------------------------
 const collectFromDom = () => {
   const urls = new Set();
-  const add = (u) => { if (u && !u.startsWith('data:')) urls.add(u); };
+  const add = (u) => {
+    if (u && !u.startsWith('data:')) urls.add(u);
+  };
   for (const img of document.querySelectorAll('img')) {
     add(img.currentSrc || img.src);
     if (img.srcset) {
@@ -236,14 +243,20 @@ const collectFromDom = () => {
     const bg = getComputedStyle(el).backgroundImage;
     if (bg && bg !== 'none') {
       for (const m of bg.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
-        try { add(new URL(m[1], location.href).href); } catch {}
+        try {
+          add(new URL(m[1], location.href).href);
+        } catch {}
       }
     }
   }
   // raw HTML sweep for /_next/static/media/* and /images/* paths
   const html = document.documentElement.outerHTML;
-  for (const m of html.matchAll(/["'(]((?:https?:\/\/[^"')\s]+)?\/(?:_next\/static\/media|images)\/[^"')\s]+?\.(?:png|jpe?g|webp|gif|svg|avif|ico))["')]/gi)) {
-    try { add(new URL(m[1], location.href).href); } catch {}
+  for (const m of html.matchAll(
+    /["'(]((?:https?:\/\/[^"')\s]+)?\/(?:_next\/static\/media|images)\/[^"')\s]+?\.(?:png|jpe?g|webp|gif|svg|avif|ico))["')]/gi,
+  )) {
+    try {
+      add(new URL(m[1], location.href).href);
+    } catch {}
   }
   return [...urls];
 };
@@ -267,7 +280,9 @@ const collectComputedStyles = () => {
     sel.push(['link:' + (a.textContent || '').trim().slice(0, 30), a]);
     if (sel.length > 70) break;
   }
-  for (const el of document.querySelectorAll('[class*="brand" i], [class*="primary" i], [class*="accent" i], [class*="hero" i], [class*="cta" i], [class*="green" i], [class*="gold" i], [class*="yellow" i]')) {
+  for (const el of document.querySelectorAll(
+    '[class*="brand" i], [class*="primary" i], [class*="accent" i], [class*="hero" i], [class*="cta" i], [class*="green" i], [class*="gold" i], [class*="yellow" i]',
+  )) {
     sel.push(['brandclass:' + el.className.toString().slice(0, 60), el]);
     if (sel.length > 110) break;
   }
@@ -287,10 +302,16 @@ const collectComputedStyles = () => {
   const sheetColors = [];
   for (const sheet of document.styleSheets) {
     let rules;
-    try { rules = sheet.cssRules; } catch { continue; }
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
     for (const rule of rules) {
       const text = rule.cssText || '';
-      for (const m of text.matchAll(/#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|rgba?\([^)]+\)|hsla?\([^)]+\)/gi)) {
+      for (const m of text.matchAll(
+        /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|rgba?\([^)]+\)|hsla?\([^)]+\)/gi,
+      )) {
         sheetColors.push(m[0]);
       }
     }
@@ -304,8 +325,14 @@ const collectComputedStyles = () => {
       ? [...nav.querySelectorAll('a')].map((a) => ({ text: a.textContent.trim(), href: a.href }))
       : [],
     footerText: document.querySelector('footer')?.innerText || '',
-    socialLinks: [...document.querySelectorAll('a[href*="instagram"], a[href*="tiktok"], a[href*="twitter"], a[href*="x.com"], a[href*="facebook"], a[href*="youtube"], a[href*="linkedin"], a[href*="wa.me"], a[href*="whatsapp"]')].map((a) => a.href),
-    headings: [...document.querySelectorAll('h1, h2, h3')].slice(0, 30).map((h) => ({ tag: h.tagName, text: h.innerText.trim().slice(0, 200) })),
+    socialLinks: [
+      ...document.querySelectorAll(
+        'a[href*="instagram"], a[href*="tiktok"], a[href*="twitter"], a[href*="x.com"], a[href*="facebook"], a[href*="youtube"], a[href*="linkedin"], a[href*="wa.me"], a[href*="whatsapp"]',
+      ),
+    ].map((a) => a.href),
+    headings: [...document.querySelectorAll('h1, h2, h3')]
+      .slice(0, 30)
+      .map((h) => ({ tag: h.tagName, text: h.innerText.trim().slice(0, 200) })),
     bodyText: document.body.innerText.slice(0, 8000),
   };
 };
@@ -333,7 +360,10 @@ for (const path of PAGES) {
           y += 600;
           window.scrollTo(0, y);
           if (y < document.body.scrollHeight + 600) setTimeout(step, 150);
-          else { window.scrollTo(0, 0); resolve(); }
+          else {
+            window.scrollTo(0, 0);
+            resolve();
+          }
         };
         step();
       });
@@ -344,7 +374,8 @@ for (const path of PAGES) {
     for (const u of domUrls) {
       const resolved = resolveNextImage(u, BASE);
       if (!discovered.has(resolved)) discovered.set(resolved, { firstSeenOn: url, via: 'dom' });
-      if (resolved !== u && !discovered.has(u)) discovered.set(u, { firstSeenOn: url, via: 'dom(next-image-variant)' });
+      if (resolved !== u && !discovered.has(u))
+        discovered.set(u, { firstSeenOn: url, via: 'dom(next-image-variant)' });
     }
     const styles = await page.evaluate(collectComputedStyles);
     pageData.push({ url, ...styles });
@@ -359,7 +390,9 @@ for (const [u, meta] of imageResponses) {
   if (!discovered.has(u)) discovered.set(u, { firstSeenOn: meta.firstSeenOn, via: 'response' });
 }
 
-log(`discovered ${discovered.size} image URLs, ${imageResponses.size} sniffed responses, ${cssFiles.size} css files`);
+log(
+  `discovered ${discovered.size} image URLs, ${imageResponses.size} sniffed responses, ${cssFiles.size} css files`,
+);
 
 // download ------------------------------------------------------------------
 const manifest = [];
@@ -371,16 +404,25 @@ for (const [url, meta] of discovered) {
   if (!buffer) {
     try {
       const resp = await page.request.get(url, { timeout: 30000 });
-      if (!resp.ok()) { log('  skip (http ' + resp.status() + ')', url); continue; }
+      if (!resp.ok()) {
+        log('  skip (http ' + resp.status() + ')', url);
+        continue;
+      }
       contentType = (resp.headers()['content-type'] || '').toLowerCase();
-      if (!contentType.startsWith('image/')) { log('  skip (not image: ' + contentType + ')', url); continue; }
+      if (!contentType.startsWith('image/')) {
+        log('  skip (not image: ' + contentType + ')', url);
+        continue;
+      }
       buffer = await resp.body();
     } catch (e) {
       log('  skip (fetch failed)', url, e.message.split('\n')[0]);
       continue;
     }
   }
-  if (buffer.length < MIN_IMAGE_BYTES) { log('  skip (<1KB)', url); continue; }
+  if (buffer.length < MIN_IMAGE_BYTES) {
+    log('  skip (<1KB)', url);
+    continue;
+  }
 
   let name = filenameFromUrl(url);
   if (name.endsWith('.img')) {
@@ -394,7 +436,13 @@ for (const [url, meta] of discovered) {
   if (!savedByName.has(name)) {
     writeFileSync(join(IMG_DIR, name), buffer);
     savedByName.set(name, hash);
-    manifest.push({ filename: name, bytes: buffer.length, sourceUrl: url, firstSeenOn: meta.firstSeenOn, via: meta.via });
+    manifest.push({
+      filename: name,
+      bytes: buffer.length,
+      sourceUrl: url,
+      firstSeenOn: meta.firstSeenOn,
+      via: meta.via,
+    });
     log('  saved', name, `(${(buffer.length / 1024).toFixed(1)}KB)`);
   }
 }
@@ -407,42 +455,62 @@ for (const entry of manifest) {
   if (entry.filename.endsWith('.svg')) {
     const svg = readFileSync(filePath, 'utf8');
     const fills = new Set();
-    for (const m of svg.matchAll(/(?:fill|stroke|stop-color)\s*[:=]\s*["']?(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g)) fills.add(m[1].toLowerCase());
+    for (const m of svg.matchAll(
+      /(?:fill|stroke|stop-color)\s*[:=]\s*["']?(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g,
+    ))
+      fills.add(m[1].toLowerCase());
     const vb = svg.match(/viewBox\s*=\s*["']([\d.\s-]+)["']/);
     if (vb) {
       const [, , w, h] = vb[1].trim().split(/\s+/).map(Number);
-      entry.width = w; entry.height = h;
+      entry.width = w;
+      entry.height = h;
     }
     entry.svgFills = [...fills];
     continue;
   }
   try {
-    const mime = {
-      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
-      gif: 'image/gif', avif: 'image/avif', ico: 'image/x-icon',
-    }[entry.filename.split('.').pop().toLowerCase()] || 'image/png';
+    const mime =
+      {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        avif: 'image/avif',
+        ico: 'image/x-icon',
+      }[entry.filename.split('.').pop().toLowerCase()] || 'image/png';
     const dataUrl = `data:${mime};base64,` + readFileSync(filePath).toString('base64');
     const result = await analysisPage.evaluate(async (fileUrl) => {
       const img = new Image();
       img.src = fileUrl;
       await img.decode();
-      const w = img.naturalWidth, h = img.naturalHeight;
+      const w = img.naturalWidth,
+        h = img.naturalHeight;
       const size = 48;
       const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
+      canvas.width = size;
+      canvas.height = size;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, size, size);
       const data = ctx.getImageData(0, 0, size, size).data;
       const counts = new Map();
       for (let i = 0; i < data.length; i += 4) {
         if (data[i + 3] < 128) continue;
-        const r = data[i] & 0xf0, g = data[i + 1] & 0xf0, b = data[i + 2] & 0xf0;
+        const r = data[i] & 0xf0,
+          g = data[i + 1] & 0xf0,
+          b = data[i + 2] & 0xf0;
         const key = (r << 16) | (g << 8) | b;
         counts.set(key, (counts.get(key) || 0) + 1);
       }
-      const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+      const top = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
         .map(([k, n]) => ({
-          hex: '#' + [(k >> 16) & 255, (k >> 8) & 255, k & 255].map((v) => (v + 8).toString(16).padStart(2, '0')).join(''),
+          hex:
+            '#' +
+            [(k >> 16) & 255, (k >> 8) & 255, k & 255]
+              .map((v) => (v + 8).toString(16).padStart(2, '0'))
+              .join(''),
           share: Math.round((n / (size * size)) * 100) / 100,
         }));
       return { w, h, top };
@@ -499,7 +567,11 @@ const fonts = {};
 for (const pd of pageData) {
   for (const p of pd.picks || []) {
     if (!p.fontFamily) continue;
-    const key = /^h\d/.test(p.label) ? 'headings' : p.label === 'body' || p.label === 'p' ? 'body' : null;
+    const key = /^h\d/.test(p.label)
+      ? 'headings'
+      : p.label === 'body' || p.label === 'p'
+        ? 'body'
+        : null;
     if (key && !fonts[key]) fonts[key] = p.fontFamily;
   }
 }
@@ -518,9 +590,20 @@ writeFileSync(join(BRAND_DIR, 'extraction-raw.json'), JSON.stringify(raw, null, 
 manifest.sort((a, b) => b.bytes - a.bytes);
 writeFileSync(
   join(BRAND_DIR, 'image-manifest.json'),
-  JSON.stringify(manifest.map((m) => ({ description: '', ...m })), null, 2)
+  JSON.stringify(
+    manifest.map((m) => ({ description: '', ...m })),
+    null,
+    2,
+  ),
 );
 
 log('wrote assets/brand/extraction-raw.json and assets/brand/image-manifest.json');
 log(`images saved: ${manifest.length}; palette entries: ${palette.length}`);
-log('top colors:', palette.filter((p) => !p.nearWhite && !p.nearBlack).slice(0, 12).map((p) => `${p.hex}(${p.count})`).join(' '));
+log(
+  'top colors:',
+  palette
+    .filter((p) => !p.nearWhite && !p.nearBlack)
+    .slice(0, 12)
+    .map((p) => `${p.hex}(${p.count})`)
+    .join(' '),
+);
